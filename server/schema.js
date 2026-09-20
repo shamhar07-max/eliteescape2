@@ -191,6 +191,83 @@ CREATE TABLE IF NOT EXISTS messages (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- ===== HRMS (Phase 5) =====
+CREATE TABLE IF NOT EXISTS employees (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER REFERENCES users(id),      -- linked login account, if this employee has one
+  full_name TEXT NOT NULL,
+  email TEXT,
+  phone TEXT,
+  job_title TEXT NOT NULL,
+  department TEXT NOT NULL,                  -- 'sales', 'ops', 'finance', 'hr', 'admin', 'management'
+  employment_type TEXT NOT NULL DEFAULT 'full_time', -- 'full_time', 'part_time', 'contract'
+  basic_salary_aed REAL NOT NULL DEFAULT 0,
+  join_date TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',     -- 'active', 'on_leave', 'terminated'
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS leave_requests (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+  leave_type TEXT NOT NULL,                  -- 'annual', 'sick', 'unpaid', 'emergency'
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  reason TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',    -- 'pending', 'approved', 'rejected'
+  decided_by_user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ===== Payroll (Phase 5) =====
+CREATE TABLE IF NOT EXISTS payroll_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  period_year INTEGER NOT NULL,
+  period_month INTEGER NOT NULL,             -- 1-12
+  status TEXT NOT NULL DEFAULT 'draft',      -- 'draft', 'processed', 'paid'
+  processed_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(period_year, period_month)
+);
+
+CREATE TABLE IF NOT EXISTS payslips (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  payroll_run_id INTEGER NOT NULL REFERENCES payroll_runs(id) ON DELETE CASCADE,
+  employee_id INTEGER NOT NULL REFERENCES employees(id),
+  basic_salary_aed REAL NOT NULL,
+  allowances_aed REAL NOT NULL DEFAULT 0,
+  deductions_aed REAL NOT NULL DEFAULT 0,
+  net_pay_aed REAL NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',    -- 'pending', 'paid'
+  paid_at TEXT
+);
+
+-- ===== Procurement (Phase 5) =====
+CREATE TABLE IF NOT EXISTS vendors (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  contact_name TEXT,
+  email TEXT,
+  phone TEXT,
+  category TEXT,                             -- 'transport', 'hotel', 'office_supplies', 'marketing', 'other'
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS purchase_orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  po_number TEXT UNIQUE NOT NULL,            -- 'PO-2026-0001'
+  vendor_id INTEGER NOT NULL REFERENCES vendors(id),
+  description TEXT NOT NULL,
+  amount_aed REAL NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft',      -- 'draft', 'approved', 'received', 'paid', 'cancelled'
+  requested_by_user_id INTEGER REFERENCES users(id),
+  approved_by_user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
 CREATE INDEX IF NOT EXISTS idx_leads_owner ON leads(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_lead_activities_lead ON lead_activities(lead_id);
@@ -205,6 +282,13 @@ CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
 CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_conversations_customer ON conversations(customer_id);
 CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_employees_status ON employees(status);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_employee ON leave_requests(employee_id);
+CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status);
+CREATE INDEX IF NOT EXISTS idx_payslips_run ON payslips(payroll_run_id);
+CREATE INDEX IF NOT EXISTS idx_payslips_employee ON payslips(employee_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_vendor ON purchase_orders(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_status ON purchase_orders(status);
 `;
 
 export const SEED_ROLES = [
@@ -222,4 +306,5 @@ export const SEED_PERMISSIONS = [
   "accounting.read", "accounting.write",
   "hr.read", "hr.write",
   "admin.read", "admin.write",
+  "procurement.read", "procurement.write",
 ];

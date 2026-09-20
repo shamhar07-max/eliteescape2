@@ -54,7 +54,12 @@ before deploying — it defaults to local dev ports only.
       Runs on a `mock`/`anthropic` provider switch (`AI_PROVIDER` env var) —
       mock mode is fully functional today with zero external dependency;
       drop in `ANTHROPIC_API_KEY` for real Claude intelligence, no code changes
-- [ ] **Phase 5 — HRMS / Payroll / Procurement**
+- [x] **Phase 5 — HRMS / Payroll / Procurement**: employees + leave requests
+      (approval auto-flips employee status to on_leave), monthly payroll runs
+      (auto-generated payslips from basic salary, editable allowances/
+      deductions while in draft, draft → processed → paid lifecycle),
+      vendors + purchase orders with sequential PO numbering, dashboard UI
+      for all four
 - [ ] **Phase 6 — Mobile apps** (customer, employee, owner)
 - [ ] **Phase 7 — Marketing automation / SEO tooling**
 - [ ] **Phase 8 — Platform administration** (multi-tenant, security, monitoring)

@@ -11,16 +11,13 @@ mkdirSync(dirname(dbPath), { recursive: true });
 export const db = new DatabaseSync(dbPath);
 db.exec(SCHEMA);
 
-const roleCount = db.prepare("SELECT COUNT(*) AS n FROM roles").get().n;
-if (roleCount === 0) {
-  const insertRole = db.prepare("INSERT INTO roles (name, description) VALUES (?, ?)");
-  for (const [name, description] of SEED_ROLES) insertRole.run(name, description);
-}
+// INSERT OR IGNORE against the UNIQUE name/code columns — safe to re-run on
+// every boot, so a later phase's new role or permission reaches a database
+// that was already seeded by an earlier phase.
+const insertRole = db.prepare("INSERT OR IGNORE INTO roles (name, description) VALUES (?, ?)");
+for (const [name, description] of SEED_ROLES) insertRole.run(name, description);
 
-const permCount = db.prepare("SELECT COUNT(*) AS n FROM permissions").get().n;
-if (permCount === 0) {
-  const insertPerm = db.prepare("INSERT INTO permissions (code) VALUES (?)");
-  for (const code of SEED_PERMISSIONS) insertPerm.run(code);
-}
+const insertPerm = db.prepare("INSERT OR IGNORE INTO permissions (code) VALUES (?)");
+for (const code of SEED_PERMISSIONS) insertPerm.run(code);
 
 console.log(`[db] SQLite ready at ${dbPath}`);
