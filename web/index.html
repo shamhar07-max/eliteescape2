@@ -21,6 +21,8 @@
       <button class="nav-btn" data-tab="leave">Leave Requests</button>
       <button class="nav-btn" data-tab="payroll">Payroll</button>
       <button class="nav-btn" data-tab="procurement">Procurement</button>
+      <button class="nav-btn" data-tab="campaigns">Campaigns</button>
+      <button class="nav-btn" data-tab="seo">SEO Tools</button>
     </nav>
     <div class="sidebar-foot">
       <div id="whoami" class="muted"></div>
@@ -172,6 +174,74 @@
       </div>
       <div class="tab-head" style="margin-top:28px"><h2 style="margin:0;font-size:16px">Vendors</h2></div>
       <div class="list wide" id="vendorsList"></div>
+    </section>
+
+    <section id="tab-campaigns" class="tab" hidden>
+      <div class="tab-head"><h1>Marketing Campaigns</h1></div>
+      <form class="note-form" id="campaignForm" style="flex-wrap:wrap">
+        <input name="name" placeholder="Campaign name" required style="flex:1.5">
+        <select name="channel" required style="width:120px">
+          <option value="email">Email</option>
+          <option value="whatsapp">WhatsApp</option>
+        </select>
+        <select name="audienceSource" required style="width:130px">
+          <option value="customers">All customers</option>
+          <option value="leads">Leads by interest/status</option>
+        </select>
+        <select name="filterSource" style="width:130px">
+          <option value="">Any source</option>
+          <option value="website">Website</option>
+          <option value="whatsapp">WhatsApp</option>
+          <option value="referral">Referral</option>
+          <option value="walk-in">Walk-in</option>
+        </select>
+        <select name="filterInterestType" style="width:130px">
+          <option value="">Any interest</option>
+          <option value="holiday">Holiday</option>
+          <option value="visa">Visa</option>
+          <option value="attraction">Attraction</option>
+          <option value="flight">Flight</option>
+          <option value="hotel">Hotel</option>
+          <option value="insurance">Insurance</option>
+        </select>
+        <select name="filterLeadStatus" style="width:120px">
+          <option value="">Any status</option>
+          <option value="new">New</option>
+          <option value="contacted">Contacted</option>
+          <option value="quoted">Quoted</option>
+          <option value="won">Won</option>
+          <option value="lost">Lost</option>
+        </select>
+        <input name="subject" placeholder="Subject (email only)" style="flex:1.5">
+        <textarea name="message" placeholder="Message" required style="flex:1 1 100%;min-height:60px;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13.5px;font-family:inherit"></textarea>
+        <button type="submit">Create draft</button>
+      </form>
+      <div class="split" style="margin-top:16px">
+        <div class="list" id="campaignsList"></div>
+        <div class="detail" id="campaignDetail"><p class="muted">Select a campaign to view details.</p></div>
+      </div>
+    </section>
+
+    <section id="tab-seo" class="tab" hidden>
+      <div class="tab-head"><h1>SEO Tools</h1></div>
+      <form class="note-form" id="seoAuditForm" style="flex-wrap:wrap">
+        <input name="baseUrl" placeholder="Website base URL (e.g. http://localhost:8097)" required style="flex:1.5">
+        <input name="paths" placeholder="Paths, comma-separated (e.g. /, /about.html, /contact.html)" required style="flex:2">
+        <button type="submit">Run audit</button>
+      </form>
+      <div class="split" style="margin-top:16px">
+        <div class="list" id="seoAuditsList"></div>
+        <div class="detail" id="seoAuditDetail"><p class="muted">Select an audit to view page-by-page findings.</p></div>
+      </div>
+
+      <div class="tab-head" style="margin-top:28px"><h2 style="margin:0;font-size:16px">Content calendar</h2></div>
+      <form class="note-form" id="contentItemForm">
+        <input name="title" placeholder="Content title" required style="flex:1.4">
+        <input name="targetKeyword" placeholder="Target keyword" style="flex:1">
+        <input name="targetUrl" placeholder="Target page (optional)" style="flex:1">
+        <button type="submit">Add</button>
+      </form>
+      <div class="list wide" id="contentItemsList" style="margin-top:12px"></div>
     </section>
   </main>
 </div>

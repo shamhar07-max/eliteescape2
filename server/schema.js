@@ -268,6 +268,69 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- ===== Marketing automation (Phase 7) =====
+CREATE TABLE IF NOT EXISTS campaigns (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  channel TEXT NOT NULL,                     -- 'email', 'whatsapp'
+  subject TEXT,                              -- email only
+  message TEXT NOT NULL,
+  audience_source TEXT NOT NULL DEFAULT 'customers', -- 'customers', 'leads'
+  filter_interest_type TEXT,                 -- leads audience only
+  filter_lead_status TEXT,                   -- leads audience only
+  filter_source TEXT,                        -- customers audience only
+  status TEXT NOT NULL DEFAULT 'draft',      -- 'draft', 'sent'
+  sent_at TEXT,
+  sent_count INTEGER NOT NULL DEFAULT 0,
+  created_by_user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS campaign_sends (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  campaign_id INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  customer_id INTEGER REFERENCES customers(id),
+  recipient TEXT,                            -- email or whatsapp number resolved at send time
+  sent_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ===== SEO tooling (Phase 7) =====
+CREATE TABLE IF NOT EXISTS seo_audits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  base_url TEXT NOT NULL,
+  pages_checked INTEGER NOT NULL DEFAULT 0,
+  issues_found INTEGER NOT NULL DEFAULT 0,
+  run_at TEXT NOT NULL DEFAULT (datetime('now')),
+  run_by_user_id INTEGER REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS seo_audit_pages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  audit_id INTEGER NOT NULL REFERENCES seo_audits(id) ON DELETE CASCADE,
+  path TEXT NOT NULL,
+  status INTEGER NOT NULL DEFAULT 200,
+  title TEXT,
+  title_length INTEGER NOT NULL DEFAULT 0,
+  meta_description TEXT,
+  meta_description_length INTEGER NOT NULL DEFAULT 0,
+  h1_count INTEGER NOT NULL DEFAULT 0,
+  image_count INTEGER NOT NULL DEFAULT 0,
+  images_missing_alt INTEGER NOT NULL DEFAULT 0,
+  word_count INTEGER NOT NULL DEFAULT 0,
+  issues TEXT                                -- JSON array of issue strings
+);
+
+CREATE TABLE IF NOT EXISTS seo_content_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  target_keyword TEXT,
+  target_url TEXT,
+  status TEXT NOT NULL DEFAULT 'idea',       -- 'idea', 'drafting', 'review', 'published'
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
 CREATE INDEX IF NOT EXISTS idx_leads_owner ON leads(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_lead_activities_lead ON lead_activities(lead_id);
@@ -289,6 +352,10 @@ CREATE INDEX IF NOT EXISTS idx_payslips_run ON payslips(payroll_run_id);
 CREATE INDEX IF NOT EXISTS idx_payslips_employee ON payslips(employee_id);
 CREATE INDEX IF NOT EXISTS idx_purchase_orders_vendor ON purchase_orders(vendor_id);
 CREATE INDEX IF NOT EXISTS idx_purchase_orders_status ON purchase_orders(status);
+CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status);
+CREATE INDEX IF NOT EXISTS idx_campaign_sends_campaign ON campaign_sends(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_seo_audit_pages_audit ON seo_audit_pages(audit_id);
+CREATE INDEX IF NOT EXISTS idx_seo_content_items_status ON seo_content_items(status);
 `;
 
 export const SEED_ROLES = [
@@ -298,6 +365,7 @@ export const SEED_ROLES = [
   ["ops", "Travel operations"],
   ["finance", "Accounting and payroll"],
   ["hr", "HR and staff management"],
+  ["marketing", "Marketing automation and SEO tooling"],
 ];
 
 export const SEED_PERMISSIONS = [
@@ -307,4 +375,5 @@ export const SEED_PERMISSIONS = [
   "hr.read", "hr.write",
   "admin.read", "admin.write",
   "procurement.read", "procurement.write",
+  "marketing.read", "marketing.write",
 ];

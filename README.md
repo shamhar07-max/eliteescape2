@@ -60,6 +60,12 @@ before deploying — it defaults to local dev ports only.
       deductions while in draft, draft → processed → paid lifecycle),
       vendors + purchase orders with sequential PO numbering, dashboard UI
       for all four
-- [ ] **Phase 6 — Mobile apps** (customer, employee, owner)
-- [ ] **Phase 7 — Marketing automation / SEO tooling**
+- [ ] **Phase 6 — Mobile apps** (customer, employee, owner) — deferred; this
+      sandbox has no native mobile toolchain (Xcode/Android Studio/emulator)
+      to build or verify against, so it was skipped rather than shipped blind
+- [x] **Phase 7 — Marketing automation / SEO tooling**: campaigns (email/
+      WhatsApp) targeted at customers or leads by interest/status/source,
+      live audience preview, send history — plus a dependency-free SEO
+      auditor that crawls real pages (title/meta/H1/alt-text/word-count
+      checks) and a content-calendar CRUD for planning SEO pages
 - [ ] **Phase 8 — Platform administration** (multi-tenant, security, monitoring)

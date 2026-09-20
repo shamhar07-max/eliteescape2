@@ -31,6 +31,8 @@
     if (tab === "leave") loadLeaveRequests();
     if (tab === "payroll") loadPayrollRuns();
     if (tab === "procurement") loadProcurement();
+    if (tab === "campaigns") loadCampaigns();
+    if (tab === "seo") loadSeoTools();
   }));
 
   const timeAgo = (iso) => {
@@ -567,6 +569,147 @@
     }) });
     e.target.reset();
     await loadProcurement();
+  });
+
+  // ===== Marketing Campaigns =====
+  let campaignsCache = [], selectedCampaignId = null;
+
+  async function loadCampaigns() {
+    campaignsCache = await api("/api/campaigns");
+    $("#campaignsList").innerHTML = campaignsCache.map(c => `
+      <div class="card${c.id === selectedCampaignId ? " selected" : ""}" data-id="${c.id}">
+        <div class="card-top">
+          <span class="card-title">${c.name}</span>
+          <span class="status-pill status-${c.status === "sent" ? "won" : "new"}">${c.status}</span>
+        </div>
+        <div class="card-sub">${c.channel} · ${c.audience_source}</div>
+        ${c.status === "sent" ? `<div class="card-sub">Sent to ${c.sent_count}</div>` : ""}
+      </div>`).join("") || "<p class='muted'>No campaigns yet.</p>";
+    $$(".card[data-id]", $("#campaignsList")).forEach(card => card.addEventListener("click", () => selectCampaign(Number(card.dataset.id))));
+  }
+
+  async function selectCampaign(id) {
+    selectedCampaignId = id;
+    $$(".card", $("#campaignsList")).forEach(c => c.classList.toggle("selected", Number(c.dataset.id) === id));
+    const campaign = await api(`/api/campaigns/${id}`);
+
+    $("#campaignDetail").innerHTML = `
+      <h2>${campaign.name}</h2>
+      <p class="muted"><span class="status-pill status-${campaign.status === "sent" ? "won" : "new"}">${campaign.status}</span> · ${campaign.channel}</p>
+      <table>
+        ${campaign.subject ? `<tr><td>Subject</td><td>${campaign.subject}</td></tr>` : ""}
+        <tr><td>Message</td><td>${campaign.message}</td></tr>
+        <tr><td>Audience</td><td>${campaign.audience_source}${campaign.filter_interest_type ? ` · ${campaign.filter_interest_type}` : ""}${campaign.filter_lead_status ? ` · ${campaign.filter_lead_status}` : ""}${campaign.filter_source ? ` · ${campaign.filter_source}` : ""}</td></tr>
+      </table>
+      <div class="row" id="campaignActions">
+        ${campaign.status === "draft" ? `<button class="btn-outline" id="previewAudienceBtn">Preview audience</button><button class="btn-outline" id="sendCampaignBtn">Send now</button>` : ""}
+      </div>
+      <div id="audiencePreviewResult"></div>
+      <h3>Send history</h3>
+      <div class="timeline">${campaign.sends.map(s => `
+        <div class="timeline-item">${s.recipient}<div class="meta">${timeAgo(s.sent_at)}</div></div>`).join("") || "<p class='muted'>Not sent yet.</p>"}</div>`;
+
+    const previewBtn = $("#previewAudienceBtn"), sendBtn = $("#sendCampaignBtn");
+    previewBtn && previewBtn.addEventListener("click", async () => {
+      const preview = await api(`/api/campaigns/${id}/audience-preview`);
+      $("#audiencePreviewResult").innerHTML = `<p class="muted" style="margin-top:10px">${preview.count} recipient(s) match — ${preview.sample.map(p => p.full_name).join(", ")}${preview.count > preview.sample.length ? "…" : ""}</p>`;
+    });
+    sendBtn && sendBtn.addEventListener("click", async () => {
+      if (!confirm("Send this campaign now? This cannot be undone.")) return;
+      try {
+        await api(`/api/campaigns/${id}/send`, { method: "POST" });
+        await loadCampaigns();
+        selectCampaign(id);
+      } catch (err) { alert(err.message); }
+    });
+  }
+
+  $("#campaignForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    await api("/api/campaigns", { method: "POST", body: JSON.stringify({
+      name: fd.get("name"), channel: fd.get("channel"), subject: fd.get("subject") || undefined,
+      message: fd.get("message"), audienceSource: fd.get("audienceSource"),
+      filterInterestType: fd.get("filterInterestType") || undefined,
+      filterLeadStatus: fd.get("filterLeadStatus") || undefined,
+      filterSource: fd.get("filterSource") || undefined,
+    }) });
+    e.target.reset();
+    await loadCampaigns();
+  });
+
+  // ===== SEO Tools =====
+  let seoAuditsCache = [], selectedAuditId = null;
+
+  async function loadSeoTools() {
+    seoAuditsCache = await api("/api/seo/audits");
+    $("#seoAuditsList").innerHTML = seoAuditsCache.map(a => `
+      <div class="card${a.id === selectedAuditId ? " selected" : ""}" data-id="${a.id}">
+        <div class="card-top">
+          <span class="card-title">${a.base_url}</span>
+          <span class="status-pill status-${a.issues_found === 0 ? "won" : "lost"}">${a.issues_found} issue(s)</span>
+        </div>
+        <div class="card-sub">${a.pages_checked} page(s) · ${timeAgo(a.run_at)}</div>
+      </div>`).join("") || "<p class='muted'>No audits run yet.</p>";
+    $$(".card[data-id]", $("#seoAuditsList")).forEach(card => card.addEventListener("click", () => selectAudit(Number(card.dataset.id))));
+
+    const items = await api("/api/seo/content-items");
+    $("#contentItemsList").innerHTML = items.map(i => `
+      <div class="card" data-id="${i.id}">
+        <div class="card-top">
+          <span class="card-title">${i.title}</span>
+          <span class="status-pill status-${i.status === "published" ? "won" : i.status === "review" ? "quoted" : i.status === "drafting" ? "contacted" : "new"}">${i.status}</span>
+        </div>
+        <div class="card-sub">${i.target_keyword || ""}${i.target_url ? ` → ${i.target_url}` : ""}</div>
+        <div class="row" style="margin-top:8px">
+          ${["idea", "drafting", "review", "published"].map(s =>
+            `<button class="btn-outline content-status-btn${s === i.status ? " active" : ""}" data-id="${i.id}" data-status="${s}">${s}</button>`).join("")}
+        </div>
+      </div>`).join("") || "<p class='muted'>No content items yet.</p>";
+    $$(".content-status-btn", $("#contentItemsList")).forEach(btn => btn.addEventListener("click", async () => {
+      await api(`/api/seo/content-items/${btn.dataset.id}/status`, { method: "PATCH", body: JSON.stringify({ status: btn.dataset.status }) });
+      await loadSeoTools();
+    }));
+  }
+
+  async function selectAudit(id) {
+    selectedAuditId = id;
+    $$(".card", $("#seoAuditsList")).forEach(c => c.classList.toggle("selected", Number(c.dataset.id) === id));
+    const audit = await api(`/api/seo/audits/${id}`);
+
+    $("#seoAuditDetail").innerHTML = `
+      <h2>${audit.base_url}</h2>
+      <p class="muted">${audit.pages_checked} page(s) checked · ${audit.issues_found} issue(s) found · ${timeAgo(audit.run_at)}</p>
+      <div class="timeline">${audit.pages.map(p => `
+        <div class="timeline-item">
+          <b>${p.path}</b> ${p.status !== 200 ? `<span class="status-pill status-lost">HTTP ${p.status}</span>` : ""}
+          <div class="meta">Title: ${p.title_length} chars · Meta: ${p.meta_description_length} chars · H1: ${p.h1_count} · Images: ${p.image_count} (${p.images_missing_alt} missing alt) · ${p.word_count} words</div>
+          ${p.issues.length ? `<div class="meta" style="color:var(--danger);margin-top:4px">${p.issues.join(" · ")}</div>` : `<div class="meta" style="color:var(--success);margin-top:4px">No issues found</div>`}
+        </div>`).join("")}</div>`;
+  }
+
+  $("#seoAuditForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const paths = fd.get("paths").split(",").map(p => p.trim()).filter(Boolean);
+    const btn = e.target.querySelector("button[type=submit]");
+    btn.disabled = true; btn.textContent = "Auditing…";
+    try {
+      const audit = await api("/api/seo/audits", { method: "POST", body: JSON.stringify({ baseUrl: fd.get("baseUrl"), paths }) });
+      await loadSeoTools();
+      selectAudit(audit.id);
+    } catch (err) { alert(err.message); }
+    btn.disabled = false; btn.textContent = "Run audit";
+  });
+
+  $("#contentItemForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    await api("/api/seo/content-items", { method: "POST", body: JSON.stringify({
+      title: fd.get("title"), targetKeyword: fd.get("targetKeyword") || undefined, targetUrl: fd.get("targetUrl") || undefined,
+    }) });
+    e.target.reset();
+    await loadSeoTools();
   });
 
   // ===== Notifications =====
