@@ -45,8 +45,9 @@ before deploying — it defaults to local dev ports only.
 - [x] **Phase 2 — Communications + CRM UI**: real dashboard, in-app + email
       notifications (console provider for now — swap in real SMTP via
       `EMAIL_PROVIDER` in `server/lib/notify.js`)
-- [ ] **Phase 3 — Travel Operations + Accounting core**: bookings/itineraries,
-      invoicing, UAE VAT basics
+- [x] **Phase 3 — Travel Operations + Accounting core**: bookings/itineraries,
+      sequential invoicing (UAE FTA-compliant numbering), 5% UAE VAT,
+      payments with auto-paid-status, dashboard UI for both
 - [ ] **Phase 4 — First AI employees**: Travel Consultant + Receptionist,
       wired to real CRM data
 - [ ] **Phase 5 — HRMS / Payroll / Procurement**
