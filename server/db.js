@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { SCHEMA, SEED_ROLES, SEED_PERMISSIONS } from "./schema.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
-const dbPath = process.env.DB_PATH || join(root, "data", "elite-escape.db");
+export const dbPath = process.env.DB_PATH || join(root, "data", "elite-escape.db");
 mkdirSync(dirname(dbPath), { recursive: true });
 
 export const db = new DatabaseSync(dbPath);

@@ -15,6 +15,8 @@ import { router as payrollRoutes } from "./routes/payroll.routes.js";
 import { router as procurementRoutes } from "./routes/procurement.routes.js";
 import { router as marketingRoutes } from "./routes/marketing.routes.js";
 import { router as seoRoutes } from "./routes/seo.routes.js";
+import { router as adminRoutes } from "./routes/admin.routes.js";
+import { metricsMiddleware } from "./lib/metrics.js";
 
 // Grant every seeded role its module permissions. Owner/admin get everything;
 // sales gets CRM; ops/finance/hr get their own module — this is the
@@ -37,6 +39,7 @@ import { router as seoRoutes } from "./routes/seo.routes.js";
 }
 
 export const app = express();
+app.use(metricsMiddleware);
 app.use(express.json());
 app.use(cookieParser());
 
@@ -56,6 +59,7 @@ app.use(payrollRoutes);
 app.use(procurementRoutes);
 app.use(marketingRoutes);
 app.use(seoRoutes);
+app.use(adminRoutes);
 
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "web");
 app.use(express.static(webRoot));

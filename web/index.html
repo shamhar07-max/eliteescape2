@@ -23,10 +23,17 @@
       <button class="nav-btn" data-tab="procurement">Procurement</button>
       <button class="nav-btn" data-tab="campaigns">Campaigns</button>
       <button class="nav-btn" data-tab="seo">SEO Tools</button>
+      <button class="nav-btn" data-tab="admin" id="adminNavBtn" hidden>Platform Admin</button>
     </nav>
     <div class="sidebar-foot">
       <div id="whoami" class="muted"></div>
+      <button id="changePasswordBtn" class="btn-link">Change password</button>
       <button id="logoutBtn" class="btn-link">Sign out</button>
+      <form id="changePasswordForm" hidden style="margin-top:10px;display:flex;flex-direction:column;gap:6px">
+        <input name="currentPassword" type="password" placeholder="Current password" required style="padding:7px 9px;border-radius:6px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-size:12.5px">
+        <input name="newPassword" type="password" placeholder="New password" required style="padding:7px 9px;border-radius:6px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);color:#fff;font-size:12.5px">
+        <button type="submit" class="btn-link" style="text-align:left">Save</button>
+      </form>
     </div>
   </aside>
 
@@ -242,6 +249,53 @@
         <button type="submit">Add</button>
       </form>
       <div class="list wide" id="contentItemsList" style="margin-top:12px"></div>
+    </section>
+
+    <section id="tab-admin" class="tab" hidden>
+      <div class="tab-head"><h1>Platform Admin</h1></div>
+
+      <div class="tab-head" style="margin-top:4px"><h2 style="margin:0;font-size:16px">System health</h2></div>
+      <div class="metrics-grid" id="metricsGrid"></div>
+
+      <div class="tab-head" style="margin-top:28px">
+        <h2 style="margin:0;font-size:16px">Users</h2>
+      </div>
+      <form class="note-form" id="createUserForm">
+        <input name="fullName" placeholder="Full name" required style="flex:1.2">
+        <input name="email" type="email" placeholder="Email" required style="flex:1.3">
+        <input name="password" type="password" placeholder="Password (min 8 chars)" required style="flex:1">
+        <select name="role" required style="width:110px">
+          <option value="sales">Sales</option>
+          <option value="ops">Ops</option>
+          <option value="finance">Finance</option>
+          <option value="hr">HR</option>
+          <option value="marketing">Marketing</option>
+          <option value="admin">Admin</option>
+          <option value="owner">Owner</option>
+        </select>
+        <button type="submit">Create user</button>
+      </form>
+      <div class="split" style="margin-top:16px">
+        <div class="list" id="usersList"></div>
+        <div class="detail" id="userDetail"><p class="muted">Select a user to manage their account.</p></div>
+      </div>
+
+      <div class="tab-head" style="margin-top:28px">
+        <h2 style="margin:0;font-size:16px">Audit log</h2>
+        <select id="auditEntityFilter">
+          <option value="">All activity</option>
+          <option value="user">Users</option>
+          <option value="lead">Leads</option>
+          <option value="booking">Bookings</option>
+          <option value="invoice">Invoices</option>
+          <option value="payment">Payments</option>
+          <option value="employee">Employees</option>
+          <option value="payroll_run">Payroll</option>
+          <option value="purchase_order">Purchase orders</option>
+          <option value="campaign">Campaigns</option>
+        </select>
+      </div>
+      <div class="list wide" id="auditLogList"></div>
     </section>
   </main>
 </div>

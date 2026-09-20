@@ -10,10 +10,27 @@
   try { me = await api("/api/auth/me"); }
   catch { location.href = "/login.html"; return; }
   $("#whoami").textContent = `${me.fullName} · ${me.role}`;
+  if (me.permissions.includes("admin.read")) $("#adminNavBtn").hidden = false;
 
   $("#logoutBtn").addEventListener("click", async () => {
     await api("/api/auth/logout", { method: "POST" });
     location.href = "/login.html";
+  });
+
+  $("#changePasswordBtn").addEventListener("click", () => {
+    $("#changePasswordForm").hidden = !$("#changePasswordForm").hidden;
+  });
+  $("#changePasswordForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      await api("/api/auth/password", { method: "PATCH", body: JSON.stringify({
+        currentPassword: fd.get("currentPassword"), newPassword: fd.get("newPassword"),
+      }) });
+      alert("Password updated.");
+      e.target.reset();
+      e.target.hidden = true;
+    } catch (err) { alert(err.message); }
   });
 
   // tabs
@@ -33,6 +50,7 @@
     if (tab === "procurement") loadProcurement();
     if (tab === "campaigns") loadCampaigns();
     if (tab === "seo") loadSeoTools();
+    if (tab === "admin") loadAdminTab();
   }));
 
   const timeAgo = (iso) => {
@@ -711,6 +729,114 @@
     e.target.reset();
     await loadSeoTools();
   });
+
+  // ===== Platform Admin =====
+  let usersCache = [], selectedUserId = null;
+
+  async function loadAdminTab() {
+    await Promise.all([loadMetrics(), loadUsers(), loadAuditLog()]);
+  }
+
+  async function loadMetrics() {
+    const m = await api("/api/admin/metrics");
+    const cards = [
+      ["Active users", m.activeUsers], ["Active sessions", m.activeSessions],
+      ["Customers", m.customers], ["Open leads", m.openLeads],
+      ["Bookings this month", m.bookingsThisMonth], ["Revenue this month", `AED ${m.revenueThisMonthAed}`],
+      ["Active employees", m.activeEmployees], ["Pending leave", m.pendingLeaveRequests],
+      ["Pending POs", m.pendingPurchaseOrders], ["Unread notifications", m.unreadNotifications],
+      ["DB size", m.dbSizeBytes ? `${(m.dbSizeBytes / 1024).toFixed(0)} KB` : "—"],
+      ["Uptime", `${Math.floor(m.uptimeSeconds / 60)}m`],
+      ["Requests served", m.totalRequests], ["Errors (4xx/5xx)", m.totalErrors],
+    ];
+    $("#metricsGrid").innerHTML = cards.map(([label, value]) => `
+      <div class="metric-card"><div class="metric-value">${value}</div><div class="metric-label">${label}</div></div>`).join("");
+  }
+
+  async function loadUsers() {
+    usersCache = await api("/api/admin/users");
+    $("#usersList").innerHTML = usersCache.map(u => `
+      <div class="card${u.id === selectedUserId ? " selected" : ""}" data-id="${u.id}">
+        <div class="card-top">
+          <span class="card-title">${u.full_name}</span>
+          <span class="status-pill status-${u.is_active ? "won" : "lost"}">${u.is_active ? "active" : "disabled"}</span>
+        </div>
+        <div class="card-sub">${u.email} · ${u.role}</div>
+        <div class="card-sub">${u.active_sessions} active session(s)</div>
+      </div>`).join("") || "<p class='muted'>No users yet.</p>";
+    $$(".card[data-id]", $("#usersList")).forEach(card => card.addEventListener("click", () => selectUser(Number(card.dataset.id))));
+  }
+
+  async function selectUser(id) {
+    selectedUserId = id;
+    $$(".card", $("#usersList")).forEach(c => c.classList.toggle("selected", Number(c.dataset.id) === id));
+    const user = usersCache.find(u => u.id === id);
+    const isSelf = id === me.id;
+
+    $("#userDetail").innerHTML = `
+      <h2>${user.full_name}</h2>
+      <p class="muted">${user.email}</p>
+      <table>
+        <tr><td>Role</td><td>${user.role}</td></tr>
+        <tr><td>Status</td><td>${user.is_active ? "active" : "disabled"}</td></tr>
+        <tr><td>Last login</td><td>${user.last_login_at ? timeAgo(user.last_login_at) : "never"}</td></tr>
+        <tr><td>Active sessions</td><td>${user.active_sessions}</td></tr>
+      </table>
+      <div class="row">
+        ${["owner", "admin", "sales", "ops", "finance", "hr", "marketing"].map(r =>
+          `<button class="btn-outline user-role-btn${r === user.role ? " active" : ""}" data-role="${r}">${r}</button>`).join("")}
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn-outline" id="toggleActiveBtn"${isSelf ? " disabled" : ""}>${user.is_active ? "Deactivate" : "Activate"}</button>
+        <button class="btn-outline" id="revokeSessionsBtn"${user.active_sessions === 0 ? " disabled" : ""}>Revoke sessions</button>
+      </div>`;
+
+    $$(".user-role-btn", $("#userDetail")).forEach(btn => btn.addEventListener("click", async () => {
+      await api(`/api/admin/users/${id}/role`, { method: "PATCH", body: JSON.stringify({ role: btn.dataset.role }) });
+      await loadUsers();
+      selectUser(id);
+    }));
+
+    $("#toggleActiveBtn").addEventListener("click", async () => {
+      try {
+        await api(`/api/admin/users/${id}/status`, { method: "PATCH", body: JSON.stringify({ isActive: !user.is_active }) });
+        await loadUsers();
+        selectUser(id);
+      } catch (err) { alert(err.message); }
+    });
+    $("#revokeSessionsBtn").addEventListener("click", async () => {
+      await api(`/api/admin/users/${id}/revoke-sessions`, { method: "POST" });
+      await loadUsers();
+      selectUser(id);
+    });
+  }
+
+  $("#createUserForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      await api("/api/admin/users", { method: "POST", body: JSON.stringify({
+        fullName: fd.get("fullName"), email: fd.get("email"), password: fd.get("password"), role: fd.get("role"),
+      }) });
+      e.target.reset();
+      await loadUsers();
+    } catch (err) { alert(err.message); }
+  });
+
+  async function loadAuditLog() {
+    const entityType = $("#auditEntityFilter").value;
+    const rows = await api(`/api/admin/audit-log${entityType ? `?entityType=${entityType}` : ""}`);
+    $("#auditLogList").innerHTML = rows.map(a => `
+      <div class="card">
+        <div class="card-top">
+          <span class="card-title">${a.action} ${a.entity_type}${a.entity_id ? ` #${a.entity_id}` : ""}</span>
+          <span class="card-sub">${timeAgo(a.created_at)}</span>
+        </div>
+        <div class="card-sub">${a.actor_name || "system"}${a.detail ? ` — ${a.detail}` : ""}</div>
+      </div>`).join("") || "<p class='muted'>No activity recorded yet.</p>";
+  }
+
+  $("#auditEntityFilter").addEventListener("change", loadAuditLog);
 
   // ===== Notifications =====
   async function refreshBadge() {

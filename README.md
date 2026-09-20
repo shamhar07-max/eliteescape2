@@ -22,12 +22,15 @@ node index.js
 ```
 
 Open **http://localhost:4100** — you'll be redirected to `/login.html`.
-Register your first user via the API before logging in:
+Register your first user via the API before logging in — this only ever
+works once: it creates the sole bootstrap account as `owner`, then locks
+itself. Every user after that is created by an owner/admin from the
+**Platform Admin** tab (or `POST /api/admin/users`).
 
 ```bash
 curl -X POST http://localhost:4100/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"owner@eliteescapetourism.com","password":"YOUR_PASSWORD","fullName":"Your Name","role":"owner"}'
+  -d '{"email":"owner@eliteescapetourism.com","password":"YOUR_PASSWORD","fullName":"Your Name"}'
 ```
 
 ## Public website integration
@@ -68,4 +71,12 @@ before deploying — it defaults to local dev ports only.
       live audience preview, send history — plus a dependency-free SEO
       auditor that crawls real pages (title/meta/H1/alt-text/word-count
       checks) and a content-calendar CRUD for planning SEO pages
-- [ ] **Phase 8 — Platform administration** (multi-tenant, security, monitoring)
+- [x] **Phase 8 — Platform administration**: security + monitoring (scoped
+      down from multi-tenant, which this single-company platform doesn't
+      need). Fixes a real privilege-escalation hole — `/api/auth/register`
+      let anyone self-register as `owner`; it now only ever creates the
+      first (bootstrap) account, and every user after that is admin-created
+      via `POST /api/admin/users`. Adds login rate-limiting, self-service
+      password change, user management (role changes, activate/deactivate,
+      force-logout by revoking sessions), a full audit-log viewer, and a
+      system health dashboard (business KPIs + request/error counters)

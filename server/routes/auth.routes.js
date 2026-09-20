@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "../db.js";
 import { genToken, sessionExpiry } from "../lib/crypto.js";
 import { auth } from "../middleware/auth.js";
+import { rateLimit } from "../lib/rateLimit.js";
 
 export const router = Router();
 
@@ -11,32 +12,37 @@ const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   fullName: z.string().min(1),
-  role: z.enum(["owner", "admin", "sales", "ops", "finance", "hr"]).default("sales"),
 });
 
+// Self-registration only ever creates the FIRST user (system bootstrap), and
+// that user is always 'owner' — anyone could previously register as any
+// role, including 'owner', at any time. Once a user exists, every other
+// account must be created by an admin via POST /api/admin/users.
 router.post("/api/auth/register", (req, res) => {
+  const userCount = db.prepare("SELECT COUNT(*) AS n FROM users").get().n;
+  if (userCount > 0) {
+    return res.status(403).json({ error: "self-registration is disabled — ask an admin to create your account" });
+  }
+
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
-  const { email, password, fullName, role } = parsed.data;
+  const { email, password, fullName } = parsed.data;
 
-  const existing = db.prepare("SELECT id FROM users WHERE email = ?").get(email);
-  if (existing) return res.status(409).json({ error: "email already registered" });
-
-  const roleRow = db.prepare("SELECT id FROM roles WHERE name = ?").get(role);
+  const roleRow = db.prepare("SELECT id FROM roles WHERE name = 'owner'").get();
   const passwordHash = bcrypt.hashSync(password, 10);
   const result = db.prepare(
     "INSERT INTO users (email, password_hash, full_name, role_id) VALUES (?, ?, ?, ?)"
   ).run(email, passwordHash, fullName, roleRow.id);
 
-  db.prepare("INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id) VALUES (?, 'register', 'user', ?)")
+  db.prepare("INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, detail) VALUES (?, 'register', 'user', ?, 'bootstrap owner')")
     .run(result.lastInsertRowid, result.lastInsertRowid);
 
-  res.status(201).json({ id: Number(result.lastInsertRowid), email, fullName, role });
+  res.status(201).json({ id: Number(result.lastInsertRowid), email, fullName, role: "owner" });
 });
 
 const loginSchema = z.object({ email: z.string().email(), password: z.string() });
 
-router.post("/api/auth/login", (req, res) => {
+router.post("/api/auth/login", rateLimit(10, 10 * 60_000), (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "email and password required" });
   const { email, password } = parsed.data;
@@ -63,3 +69,22 @@ router.post("/api/auth/logout", (req, res) => {
 });
 
 router.get("/api/auth/me", auth(), (req, res) => res.json(req.user));
+
+const passwordChangeSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(8),
+});
+
+router.patch("/api/auth/password", auth(), (req, res) => {
+  const parsed = passwordChangeSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+
+  const user = db.prepare("SELECT * FROM users WHERE id = ?").get(req.user.id);
+  if (!bcrypt.compareSync(parsed.data.currentPassword, user.password_hash)) {
+    return res.status(401).json({ error: "current password is incorrect" });
+  }
+
+  const newHash = bcrypt.hashSync(parsed.data.newPassword, 10);
+  db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(newHash, req.user.id);
+  res.json({ ok: true });
+});
