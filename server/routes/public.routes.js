@@ -32,7 +32,7 @@ const publicLeadSchema = z.object({
   email: z.string().email().max(200).optional(),
   interestType: z.enum(["holiday", "visa", "attraction", "flight", "hotel", "insurance", "general"]).default("general"),
   interestDetail: z.string().max(500).optional(),
-  sourceChannel: z.enum(["contact_form", "callback_modal", "deal_alerts", "chatbot"]),
+  sourceChannel: z.enum(["contact_form", "callback_modal", "deal_alerts", "chatbot", "elite_reach"]),
 });
 
 router.options("/api/public/leads", publicCors);
@@ -51,9 +51,10 @@ router.post("/api/public/leads", publicCors, rateLimit(20, 10 * 60_000), async (
     : null;
 
   if (!customer) {
+    const source = d.sourceChannel === "elite_reach" ? "elite_reach" : "website";
     const result = db.prepare(
-      "INSERT INTO customers (full_name, email, phone, whatsapp, source) VALUES (?, ?, ?, ?, 'website')"
-    ).run(d.fullName, d.email || null, d.phone || null, d.whatsapp || null);
+      "INSERT INTO customers (full_name, email, phone, whatsapp, source) VALUES (?, ?, ?, ?, ?)"
+    ).run(d.fullName, d.email || null, d.phone || null, d.whatsapp || null, source);
     customer = { id: Number(result.lastInsertRowid) };
   }
 
@@ -75,5 +76,5 @@ router.post("/api/public/leads", publicCors, rateLimit(20, 10 * 60_000), async (
     entityId: Number(leadResult.lastInsertRowid),
   });
 
-  res.status(201).json({ ok: true });
+  res.status(201).json({ ok: true, leadId: Number(leadResult.lastInsertRowid), customerId: customer.id });
 });
