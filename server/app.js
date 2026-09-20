@@ -7,6 +7,8 @@ import { router as authRoutes } from "./routes/auth.routes.js";
 import { router as crmRoutes } from "./routes/crm.routes.js";
 import { router as publicRoutes } from "./routes/public.routes.js";
 import { router as notificationRoutes } from "./routes/notifications.routes.js";
+import { router as opsRoutes } from "./routes/ops.routes.js";
+import { router as accountingRoutes } from "./routes/accounting.routes.js";
 
 // Grant every seeded role its module permissions. Owner/admin get everything;
 // sales gets CRM; ops/finance/hr get their own module — this is the
@@ -38,6 +40,8 @@ app.use(authRoutes);
 app.use(crmRoutes);
 app.use(publicRoutes);
 app.use(notificationRoutes);
+app.use(opsRoutes);
+app.use(accountingRoutes);
 
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "web");
 app.use(express.static(webRoot));

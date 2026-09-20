@@ -106,12 +106,83 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- ===== Travel Operations (Phase 3) =====
+CREATE TABLE IF NOT EXISTS bookings (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER NOT NULL REFERENCES customers(id),
+  lead_id INTEGER REFERENCES leads(id),      -- the lead this booking was won from, if any
+  booking_type TEXT NOT NULL,                -- 'holiday', 'visa', 'attraction', 'flight', 'hotel', 'insurance'
+  description TEXT NOT NULL,
+  travel_date_start TEXT,
+  travel_date_end TEXT,
+  status TEXT NOT NULL DEFAULT 'draft',      -- 'draft', 'confirmed', 'completed', 'cancelled'
+  owner_user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS booking_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  booking_id INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+  description TEXT NOT NULL,                 -- 'Hotel — 4 nights', 'Return flight DXB-NRT', ...
+  quantity REAL NOT NULL DEFAULT 1,
+  unit_price_aed REAL NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- ===== Accounting core (Phase 3) — UAE VAT at 5% =====
+CREATE TABLE IF NOT EXISTS counters (
+  name TEXT PRIMARY KEY,
+  value INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS invoices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  invoice_number TEXT UNIQUE NOT NULL,       -- 'INV-2026-0001' — sequential, no gaps (UAE FTA requirement)
+  booking_id INTEGER REFERENCES bookings(id),
+  customer_id INTEGER NOT NULL REFERENCES customers(id),
+  issue_date TEXT NOT NULL DEFAULT (date('now')),
+  due_date TEXT,
+  subtotal_aed REAL NOT NULL,
+  vat_rate_bps INTEGER NOT NULL DEFAULT 500, -- 500 basis points = 5% standard UAE VAT rate
+  vat_amount_aed REAL NOT NULL,
+  total_aed REAL NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft',      -- 'draft', 'sent', 'paid', 'overdue', 'cancelled'
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS invoice_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+  description TEXT NOT NULL,
+  quantity REAL NOT NULL DEFAULT 1,
+  unit_price_aed REAL NOT NULL,
+  line_total_aed REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS payments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+  amount_aed REAL NOT NULL,
+  method TEXT NOT NULL,                      -- 'cash', 'card', 'bank_transfer', 'stripe', 'telr'
+  reference TEXT,
+  paid_at TEXT NOT NULL DEFAULT (datetime('now')),
+  recorded_by_user_id INTEGER REFERENCES users(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
 CREATE INDEX IF NOT EXISTS idx_leads_owner ON leads(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_lead_activities_lead ON lead_activities(lead_id);
 CREATE INDEX IF NOT EXISTS idx_customers_email ON customers(email);
 CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_log(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, is_read);
+CREATE INDEX IF NOT EXISTS idx_bookings_customer ON bookings(customer_id);
+CREATE INDEX IF NOT EXISTS idx_booking_items_booking ON booking_items(booking_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_customer ON invoices(customer_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_booking ON invoices(booking_id);
+CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id);
 `;
 
 export const SEED_ROLES = [

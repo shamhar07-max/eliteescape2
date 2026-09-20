@@ -23,6 +23,8 @@
     const tab = btn.dataset.tab;
     $$(".tab").forEach(t => t.hidden = t.id !== `tab-${tab}`);
     if (tab === "customers") loadCustomers();
+    if (tab === "bookings") loadBookings();
+    if (tab === "invoices") loadInvoices();
     if (tab === "notifications") loadNotifications();
   }));
 
@@ -118,6 +120,143 @@
         <div class="card-top"><span class="card-title">${c.full_name}</span><span class="card-sub">${c.source}</span></div>
         <div class="card-sub">${c.email || ""} ${c.whatsapp || c.phone || ""}</div>
       </div>`).join("") || "<p class='muted'>No customers yet.</p>";
+  }
+
+  // ===== Bookings =====
+  let bookingsCache = [], selectedBookingId = null;
+
+  async function loadBookings() {
+    await loadCustomersIndex();
+    bookingsCache = await api("/api/bookings");
+    $("#bookingsList").innerHTML = bookingsCache.map(b => `
+      <div class="card${b.id === selectedBookingId ? " selected" : ""}" data-id="${b.id}">
+        <div class="card-top">
+          <span class="card-title">${customerName(b.customer_id)}</span>
+          <span class="status-pill status-${b.status === "confirmed" ? "quoted" : b.status === "completed" ? "won" : b.status === "cancelled" ? "lost" : "new"}">${b.status}</span>
+        </div>
+        <div class="card-sub">${b.booking_type} — ${b.description}</div>
+      </div>`).join("") || "<p class='muted'>No bookings yet.</p>";
+    $$(".card[data-id]", $("#bookingsList")).forEach(card => card.addEventListener("click", () => selectBooking(Number(card.dataset.id))));
+  }
+
+  async function selectBooking(id) {
+    selectedBookingId = id;
+    $$(".card", $("#bookingsList")).forEach(c => c.classList.toggle("selected", Number(c.dataset.id) === id));
+    const booking = await api(`/api/bookings/${id}`);
+    const itemsTotal = booking.items.reduce((s, i) => s + i.quantity * i.unit_price_aed, 0);
+
+    $("#bookingDetail").innerHTML = `
+      <h2>${customerName(booking.customer_id)}</h2>
+      <p class="muted">${booking.booking_type} — ${booking.description}</p>
+      <div class="row">
+        ${["draft", "confirmed", "completed", "cancelled"].map(s =>
+          `<button class="btn-outline booking-status-btn${s === booking.status ? " active" : ""}" data-status="${s}">${s}</button>`).join("")}
+      </div>
+      <table>
+        <tr><td>Travel dates</td><td>${booking.travel_date_start || "—"} to ${booking.travel_date_end || "—"}</td></tr>
+        <tr><td>Items total</td><td>AED ${itemsTotal.toFixed(2)}</td></tr>
+      </table>
+      <h3>Line items</h3>
+      <div class="timeline">${booking.items.map(i => `
+        <div class="timeline-item">${i.description} — ${i.quantity} × AED ${i.unit_price_aed}</div>`).join("") || "<p class='muted'>No items yet.</p>"}</div>
+      <form class="note-form" id="itemForm">
+        <input name="description" placeholder="Item description" required style="flex:2">
+        <input name="quantity" type="number" step="0.5" value="1" placeholder="Qty" style="width:70px">
+        <input name="unitPriceAed" type="number" step="0.01" placeholder="AED" required style="width:100px">
+        <button type="submit">Add</button>
+      </form>
+      <div class="row" style="margin-top:16px">
+        <button class="btn-outline" id="genInvoiceBtn"${booking.items.length ? "" : " disabled"}>Generate invoice</button>
+      </div>`;
+
+    $$(".booking-status-btn", $("#bookingDetail")).forEach(btn => btn.addEventListener("click", async () => {
+      await api(`/api/bookings/${id}/status`, { method: "PATCH", body: JSON.stringify({ status: btn.dataset.status }) });
+      await loadBookings();
+      selectBooking(id);
+    }));
+
+    $("#itemForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      await api(`/api/bookings/${id}/items`, { method: "POST", body: JSON.stringify({ description: fd.get("description"), quantity: Number(fd.get("quantity")), unitPriceAed: Number(fd.get("unitPriceAed")) }) });
+      selectBooking(id);
+    });
+
+    const genBtn = $("#genInvoiceBtn");
+    genBtn && genBtn.addEventListener("click", async () => {
+      const inv = await api("/api/invoices", { method: "POST", body: JSON.stringify({ bookingId: id }) });
+      alert(`Invoice ${inv.invoiceNumber} created — AED ${inv.total} total.`);
+      $$(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === "invoices"));
+      $$(".tab").forEach(t => t.hidden = t.id !== "tab-invoices");
+      await loadInvoices();
+      selectInvoice(inv.id);
+    });
+  }
+
+  // ===== Invoices =====
+  let invoicesCache = [], selectedInvoiceId = null;
+
+  async function loadInvoices() {
+    await loadCustomersIndex();
+    invoicesCache = await api("/api/invoices");
+    $("#invoicesList").innerHTML = invoicesCache.map(inv => `
+      <div class="card${inv.id === selectedInvoiceId ? " selected" : ""}" data-id="${inv.id}">
+        <div class="card-top">
+          <span class="card-title">${inv.invoice_number}</span>
+          <span class="status-pill status-${inv.status === "paid" ? "won" : inv.status === "cancelled" ? "lost" : inv.status === "sent" ? "quoted" : "new"}">${inv.status}</span>
+        </div>
+        <div class="card-sub">${customerName(inv.customer_id)} — AED ${inv.total_aed}</div>
+      </div>`).join("") || "<p class='muted'>No invoices yet.</p>";
+    $$(".card[data-id]", $("#invoicesList")).forEach(card => card.addEventListener("click", () => selectInvoice(Number(card.dataset.id))));
+  }
+
+  async function selectInvoice(id) {
+    selectedInvoiceId = id;
+    $$(".card", $("#invoicesList")).forEach(c => c.classList.toggle("selected", Number(c.dataset.id) === id));
+    const inv = await api(`/api/invoices/${id}`);
+
+    $("#invoiceDetail").innerHTML = `
+      <h2>${inv.invoice_number}</h2>
+      <p class="muted">${customerName(inv.customer_id)}</p>
+      <div class="row">
+        ${["draft", "sent", "paid", "overdue", "cancelled"].map(s =>
+          `<button class="btn-outline invoice-status-btn${s === inv.status ? " active" : ""}" data-status="${s}">${s}</button>`).join("")}
+      </div>
+      <table>
+        <tr><td>Issue date</td><td>${inv.issue_date}</td></tr>
+        <tr><td>Due date</td><td>${inv.due_date || "—"}</td></tr>
+        <tr><td>Subtotal</td><td>AED ${inv.subtotal_aed}</td></tr>
+        <tr><td>VAT (${inv.vat_rate_bps / 100}%)</td><td>AED ${inv.vat_amount_aed}</td></tr>
+        <tr><td><b>Total</b></td><td><b>AED ${inv.total_aed}</b></td></tr>
+        <tr><td>Balance due</td><td>AED ${inv.balanceDueAed}</td></tr>
+      </table>
+      <h3>Line items</h3>
+      <div class="timeline">${inv.items.map(i => `
+        <div class="timeline-item">${i.description} — ${i.quantity} × AED ${i.unit_price_aed} = AED ${i.line_total_aed}</div>`).join("")}</div>
+      <h3>Payments</h3>
+      <div class="timeline">${inv.payments.map(p => `
+        <div class="timeline-item">AED ${p.amount_aed} via ${p.method}${p.reference ? " (" + p.reference + ")" : ""}<div class="meta">${timeAgo(p.paid_at)}</div></div>`).join("") || "<p class='muted'>No payments yet.</p>"}</div>
+      ${inv.balanceDueAed > 0 ? `
+      <form class="note-form" id="paymentForm">
+        <select name="method"><option value="bank_transfer">Bank transfer</option><option value="card">Card</option><option value="cash">Cash</option><option value="stripe">Stripe</option><option value="telr">Telr</option></select>
+        <input name="amountAed" type="number" step="0.01" placeholder="AED amount" value="${inv.balanceDueAed}" required>
+        <button type="submit">Record payment</button>
+      </form>` : ""}`;
+
+    $$(".invoice-status-btn", $("#invoiceDetail")).forEach(btn => btn.addEventListener("click", async () => {
+      await api(`/api/invoices/${id}/status`, { method: "PATCH", body: JSON.stringify({ status: btn.dataset.status }) });
+      await loadInvoices();
+      selectInvoice(id);
+    }));
+
+    const payForm = $("#paymentForm");
+    payForm && payForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      await api(`/api/invoices/${id}/payments`, { method: "POST", body: JSON.stringify({ amountAed: Number(fd.get("amountAed")), method: fd.get("method") }) });
+      await loadInvoices();
+      selectInvoice(id);
+    });
   }
 
   // ===== Notifications =====

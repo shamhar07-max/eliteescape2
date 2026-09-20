@@ -13,6 +13,8 @@
     <nav>
       <button class="nav-btn active" data-tab="leads">Leads</button>
       <button class="nav-btn" data-tab="customers">Customers</button>
+      <button class="nav-btn" data-tab="bookings">Bookings</button>
+      <button class="nav-btn" data-tab="invoices">Invoices</button>
       <button class="nav-btn" data-tab="notifications">Notifications <span class="badge" id="unreadBadge" hidden></span></button>
     </nav>
     <div class="sidebar-foot">
@@ -43,6 +45,22 @@
     <section id="tab-customers" class="tab" hidden>
       <div class="tab-head"><h1>Customers</h1></div>
       <div class="list wide" id="customersList"></div>
+    </section>
+
+    <section id="tab-bookings" class="tab" hidden>
+      <div class="tab-head"><h1>Bookings</h1></div>
+      <div class="split">
+        <div class="list" id="bookingsList"></div>
+        <div class="detail" id="bookingDetail"><p class="muted">Select a booking to view details.</p></div>
+      </div>
+    </section>
+
+    <section id="tab-invoices" class="tab" hidden>
+      <div class="tab-head"><h1>Invoices</h1></div>
+      <div class="split">
+        <div class="list" id="invoicesList"></div>
+        <div class="detail" id="invoiceDetail"><p class="muted">Select an invoice to view details.</p></div>
+      </div>
     </section>
 
     <section id="tab-notifications" class="tab" hidden>
