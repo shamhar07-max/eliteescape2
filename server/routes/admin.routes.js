@@ -5,6 +5,7 @@ import { statSync } from "node:fs";
 import { db, dbPath } from "../db.js";
 import { auth } from "../middleware/auth.js";
 import { getRequestMetrics } from "../lib/metrics.js";
+import { toAed } from "../lib/money.js";
 
 export const router = Router();
 
@@ -114,10 +115,11 @@ router.get("/api/admin/audit-log", auth(["admin.read"]), (req, res) => {
 // ===== System health / monitoring =====
 router.get("/api/admin/metrics", auth(["admin.read"]), (req, res) => {
   const count = (sql) => db.prepare(sql).get().n;
-  const revenueThisMonthAed = db.prepare(`
-    SELECT COALESCE(SUM(total_aed), 0) AS total FROM invoices
+  const revenueThisMonthFils = db.prepare(`
+    SELECT COALESCE(SUM(total_aed_fils), 0) AS total FROM invoices
     WHERE status = 'paid' AND strftime('%Y-%m', issue_date) = strftime('%Y-%m', 'now')
   `).get().total;
+  const revenueThisMonthAed = toAed(revenueThisMonthFils);
 
   let dbSizeBytes = null;
   try { dbSizeBytes = statSync(dbPath).size; } catch { /* dev DB not yet created */ }

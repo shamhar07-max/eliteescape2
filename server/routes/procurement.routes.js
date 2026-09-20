@@ -4,8 +4,11 @@ import { db } from "../db.js";
 import { auth } from "../middleware/auth.js";
 import { nextPoNumber } from "../lib/poNumber.js";
 import { notifyRole } from "../lib/notify.js";
+import { toFils, toAed } from "../lib/money.js";
 
 export const router = Router();
+
+const serializePo = (row) => ({ ...row, amount_aed: toAed(row.amount_aed_fils) });
 
 const vendorSchema = z.object({
   name: z.string().min(1),
@@ -46,7 +49,7 @@ router.get("/api/purchase-orders", auth(["procurement.read"]), (req, res) => {
   const rows = status
     ? db.prepare(`${base} WHERE po.status = ? ORDER BY po.created_at DESC LIMIT 200`).all(status)
     : db.prepare(`${base} ORDER BY po.created_at DESC LIMIT 200`).all();
-  res.json(rows);
+  res.json(rows.map(serializePo));
 });
 
 router.get("/api/purchase-orders/:id", auth(["procurement.read"]), (req, res) => {
@@ -55,7 +58,7 @@ router.get("/api/purchase-orders/:id", auth(["procurement.read"]), (req, res) =>
     JOIN vendors v ON v.id = po.vendor_id WHERE po.id = ?
   `).get(req.params.id);
   if (!po) return res.status(404).json({ error: "purchase order not found" });
-  res.json(po);
+  res.json(serializePo(po));
 });
 
 router.post("/api/purchase-orders", auth(["procurement.write"]), async (req, res) => {
@@ -68,8 +71,8 @@ router.post("/api/purchase-orders", auth(["procurement.write"]), async (req, res
 
   const poNumber = nextPoNumber();
   const result = db.prepare(
-    "INSERT INTO purchase_orders (po_number, vendor_id, description, amount_aed, requested_by_user_id) VALUES (?, ?, ?, ?, ?)"
-  ).run(poNumber, p.vendorId, p.description, p.amountAed, req.user.id);
+    "INSERT INTO purchase_orders (po_number, vendor_id, description, amount_aed_fils, requested_by_user_id) VALUES (?, ?, ?, ?, ?)"
+  ).run(poNumber, p.vendorId, p.description, toFils(p.amountAed), req.user.id);
 
   db.prepare("INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, detail) VALUES (?, 'create', 'purchase_order', ?, ?)")
     .run(req.user.id, result.lastInsertRowid, poNumber);

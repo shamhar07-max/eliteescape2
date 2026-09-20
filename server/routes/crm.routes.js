@@ -2,8 +2,11 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db.js";
 import { auth } from "../middleware/auth.js";
+import { toFils, toAed } from "../lib/money.js";
 
 export const router = Router();
+
+const serializeLead = (row) => ({ ...row, budget_aed: row.budget_aed_fils === null ? null : toAed(row.budget_aed_fils) });
 
 const customerSchema = z.object({
   fullName: z.string().min(1),
@@ -45,7 +48,7 @@ router.get("/api/leads", auth(["crm.read"]), (req, res) => {
   const rows = status
     ? db.prepare("SELECT * FROM leads WHERE status = ? ORDER BY created_at DESC LIMIT 200").all(status)
     : db.prepare("SELECT * FROM leads ORDER BY created_at DESC LIMIT 200").all();
-  res.json(rows);
+  res.json(rows.map(serializeLead));
 });
 
 router.post("/api/leads", auth(["crm.write"]), (req, res) => {
@@ -53,8 +56,8 @@ router.post("/api/leads", auth(["crm.write"]), (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
   const l = parsed.data;
   const result = db.prepare(
-    "INSERT INTO leads (customer_id, interest_type, interest_detail, owner_user_id, budget_aed, travel_date) VALUES (?, ?, ?, ?, ?, ?)"
-  ).run(l.customerId || null, l.interestType, l.interestDetail || null, req.user.id, l.budgetAed || null, l.travelDate || null);
+    "INSERT INTO leads (customer_id, interest_type, interest_detail, owner_user_id, budget_aed_fils, travel_date) VALUES (?, ?, ?, ?, ?, ?)"
+  ).run(l.customerId || null, l.interestType, l.interestDetail || null, req.user.id, l.budgetAed !== undefined ? toFils(l.budgetAed) : null, l.travelDate || null);
   db.prepare("INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id) VALUES (?, 'create', 'lead', ?)")
     .run(req.user.id, result.lastInsertRowid);
   res.status(201).json({ id: Number(result.lastInsertRowid), ...l, status: "new" });

@@ -3,8 +3,11 @@ import { z } from "zod";
 import { db } from "../db.js";
 import { auth } from "../middleware/auth.js";
 import { notifyRole } from "../lib/notify.js";
+import { toFils, toAed } from "../lib/money.js";
 
 export const router = Router();
+
+const serializeEmployee = (row) => ({ ...row, basic_salary_aed: toAed(row.basic_salary_aed_fils) });
 
 const employeeSchema = z.object({
   userId: z.number().int().optional(),
@@ -23,14 +26,14 @@ router.get("/api/employees", auth(["hr.read"]), (req, res) => {
   const rows = status
     ? db.prepare("SELECT * FROM employees WHERE status = ? ORDER BY full_name ASC").all(status)
     : db.prepare("SELECT * FROM employees ORDER BY full_name ASC").all();
-  res.json(rows);
+  res.json(rows.map(serializeEmployee));
 });
 
 router.get("/api/employees/:id", auth(["hr.read"]), (req, res) => {
   const employee = db.prepare("SELECT * FROM employees WHERE id = ?").get(req.params.id);
   if (!employee) return res.status(404).json({ error: "employee not found" });
   const leaveRequests = db.prepare("SELECT * FROM leave_requests WHERE employee_id = ? ORDER BY created_at DESC LIMIT 20").all(req.params.id);
-  res.json({ ...employee, leaveRequests });
+  res.json({ ...serializeEmployee(employee), leaveRequests });
 });
 
 router.post("/api/employees", auth(["hr.write"]), (req, res) => {
@@ -39,8 +42,8 @@ router.post("/api/employees", auth(["hr.write"]), (req, res) => {
   const e = parsed.data;
 
   const result = db.prepare(
-    "INSERT INTO employees (user_id, full_name, email, phone, job_title, department, employment_type, basic_salary_aed, join_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-  ).run(e.userId || null, e.fullName, e.email || null, e.phone || null, e.jobTitle, e.department, e.employmentType, e.basicSalaryAed, e.joinDate);
+    "INSERT INTO employees (user_id, full_name, email, phone, job_title, department, employment_type, basic_salary_aed_fils, join_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(e.userId || null, e.fullName, e.email || null, e.phone || null, e.jobTitle, e.department, e.employmentType, toFils(e.basicSalaryAed), e.joinDate);
 
   db.prepare("INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, detail) VALUES (?, 'create', 'employee', ?, ?)")
     .run(req.user.id, result.lastInsertRowid, e.fullName);
@@ -61,15 +64,18 @@ router.patch("/api/employees/:id", auth(["hr.write"]), (req, res) => {
   const employee = db.prepare("SELECT id FROM employees WHERE id = ?").get(req.params.id);
   if (!employee) return res.status(404).json({ error: "employee not found" });
 
-  const fields = { job_title: "jobTitle", department: "department", employment_type: "employmentType", basic_salary_aed: "basicSalaryAed" };
+  const fields = { job_title: "jobTitle", department: "department", employment_type: "employmentType", basic_salary_aed_fils: "basicSalaryAed" };
   const sets = [], values = [];
   for (const [col, key] of Object.entries(fields)) {
-    if (parsed.data[key] !== undefined) { sets.push(`${col} = ?`); values.push(parsed.data[key]); }
+    if (parsed.data[key] !== undefined) {
+      sets.push(`${col} = ?`);
+      values.push(col === "basic_salary_aed_fils" ? toFils(parsed.data[key]) : parsed.data[key]);
+    }
   }
   if (!sets.length) return res.status(400).json({ error: "no fields to update" });
 
   db.prepare(`UPDATE employees SET ${sets.join(", ")}, updated_at = datetime('now') WHERE id = ?`).run(...values, req.params.id);
-  res.json(db.prepare("SELECT * FROM employees WHERE id = ?").get(req.params.id));
+  res.json(serializeEmployee(db.prepare("SELECT * FROM employees WHERE id = ?").get(req.params.id)));
 });
 
 const employeeStatusSchema = z.object({ status: z.enum(["active", "on_leave", "terminated"]) });

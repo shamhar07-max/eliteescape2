@@ -1,5 +1,6 @@
 import { db } from "../../db.js";
 import { notifyRole } from "../notify.js";
+import { toFils } from "../money.js";
 
 /* Tool definitions in Anthropic Messages API tool-use format — used as-is
  * when AI_PROVIDER=anthropic, and as the same contract the mock provider's
@@ -43,8 +44,8 @@ export const runTool = async (name, input, ctx) => {
     case "create_lead": {
       if (!ctx.customerId) return { error: "no customer identified yet — ask for their name and WhatsApp/email first" };
       const result = db.prepare(
-        "INSERT INTO leads (customer_id, interest_type, interest_detail, budget_aed, travel_date) VALUES (?, ?, ?, ?, ?)"
-      ).run(ctx.customerId, input.interestType, input.interestDetail || null, input.budgetAed || null, input.travelDate || null);
+        "INSERT INTO leads (customer_id, interest_type, interest_detail, budget_aed_fils, travel_date) VALUES (?, ?, ?, ?, ?)"
+      ).run(ctx.customerId, input.interestType, input.interestDetail || null, input.budgetAed ? toFils(input.budgetAed) : null, input.travelDate || null);
       db.prepare("INSERT INTO lead_activities (lead_id, channel, body) VALUES (?, 'ai_agent', ?)")
         .run(result.lastInsertRowid, `Lead captured by AI ${ctx.agentType} agent: ${input.interestDetail}`);
       db.prepare("INSERT INTO audit_log (action, entity_type, entity_id, detail) VALUES ('create', 'lead', ?, ?)")

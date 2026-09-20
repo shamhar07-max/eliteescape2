@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS leads (
   interest_detail TEXT,               -- free text: 'Japan 7-day', 'USA visa', etc.
   status TEXT NOT NULL DEFAULT 'new', -- 'new', 'contacted', 'quoted', 'won', 'lost'
   owner_user_id INTEGER REFERENCES users(id),
-  budget_aed REAL,
+  budget_aed_fils INTEGER,            -- AED stored as integer fils (1 AED = 100 fils) — see lib/money.js
   travel_date TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -126,11 +126,13 @@ CREATE TABLE IF NOT EXISTS booking_items (
   booking_id INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
   description TEXT NOT NULL,                 -- 'Hotel — 4 nights', 'Return flight DXB-NRT', ...
   quantity REAL NOT NULL DEFAULT 1,
-  unit_price_aed REAL NOT NULL,
+  unit_price_aed_fils INTEGER NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- ===== Accounting core (Phase 3) — UAE VAT at 5% =====
+-- All *_aed_fils columns store AED as integer fils (1 AED = 100 fils) —
+-- see lib/money.js. Never do currency arithmetic on a float column.
 CREATE TABLE IF NOT EXISTS counters (
   name TEXT PRIMARY KEY,
   value INTEGER NOT NULL DEFAULT 0
@@ -143,10 +145,10 @@ CREATE TABLE IF NOT EXISTS invoices (
   customer_id INTEGER NOT NULL REFERENCES customers(id),
   issue_date TEXT NOT NULL DEFAULT (date('now')),
   due_date TEXT,
-  subtotal_aed REAL NOT NULL,
+  subtotal_aed_fils INTEGER NOT NULL,
   vat_rate_bps INTEGER NOT NULL DEFAULT 500, -- 500 basis points = 5% standard UAE VAT rate
-  vat_amount_aed REAL NOT NULL,
-  total_aed REAL NOT NULL,
+  vat_amount_aed_fils INTEGER NOT NULL,
+  total_aed_fils INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'draft',      -- 'draft', 'sent', 'paid', 'overdue', 'cancelled'
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
@@ -157,14 +159,14 @@ CREATE TABLE IF NOT EXISTS invoice_items (
   invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
   description TEXT NOT NULL,
   quantity REAL NOT NULL DEFAULT 1,
-  unit_price_aed REAL NOT NULL,
-  line_total_aed REAL NOT NULL
+  unit_price_aed_fils INTEGER NOT NULL,
+  line_total_aed_fils INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS payments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
-  amount_aed REAL NOT NULL,
+  amount_aed_fils INTEGER NOT NULL,
   method TEXT NOT NULL,                      -- 'cash', 'card', 'bank_transfer', 'stripe', 'telr'
   reference TEXT,
   paid_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -201,7 +203,7 @@ CREATE TABLE IF NOT EXISTS employees (
   job_title TEXT NOT NULL,
   department TEXT NOT NULL,                  -- 'sales', 'ops', 'finance', 'hr', 'admin', 'management'
   employment_type TEXT NOT NULL DEFAULT 'full_time', -- 'full_time', 'part_time', 'contract'
-  basic_salary_aed REAL NOT NULL DEFAULT 0,
+  basic_salary_aed_fils INTEGER NOT NULL DEFAULT 0,
   join_date TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'active',     -- 'active', 'on_leave', 'terminated'
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -236,10 +238,10 @@ CREATE TABLE IF NOT EXISTS payslips (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   payroll_run_id INTEGER NOT NULL REFERENCES payroll_runs(id) ON DELETE CASCADE,
   employee_id INTEGER NOT NULL REFERENCES employees(id),
-  basic_salary_aed REAL NOT NULL,
-  allowances_aed REAL NOT NULL DEFAULT 0,
-  deductions_aed REAL NOT NULL DEFAULT 0,
-  net_pay_aed REAL NOT NULL,
+  basic_salary_aed_fils INTEGER NOT NULL,
+  allowances_aed_fils INTEGER NOT NULL DEFAULT 0,
+  deductions_aed_fils INTEGER NOT NULL DEFAULT 0,
+  net_pay_aed_fils INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'pending',    -- 'pending', 'paid'
   paid_at TEXT
 );
@@ -260,7 +262,7 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   po_number TEXT UNIQUE NOT NULL,            -- 'PO-2026-0001'
   vendor_id INTEGER NOT NULL REFERENCES vendors(id),
   description TEXT NOT NULL,
-  amount_aed REAL NOT NULL,
+  amount_aed_fils INTEGER NOT NULL,
   status TEXT NOT NULL DEFAULT 'draft',      -- 'draft', 'approved', 'received', 'paid', 'cancelled'
   requested_by_user_id INTEGER REFERENCES users(id),
   approved_by_user_id INTEGER REFERENCES users(id),

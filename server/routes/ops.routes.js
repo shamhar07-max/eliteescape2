@@ -2,8 +2,11 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db.js";
 import { auth } from "../middleware/auth.js";
+import { toFils, toAed } from "../lib/money.js";
 
 export const router = Router();
+
+const serializeItem = (row) => ({ ...row, unit_price_aed: toAed(row.unit_price_aed_fils) });
 
 const bookingSchema = z.object({
   customerId: z.number().int(),
@@ -26,7 +29,7 @@ router.get("/api/bookings/:id", auth(["ops.read"]), (req, res) => {
   const booking = db.prepare("SELECT * FROM bookings WHERE id = ?").get(req.params.id);
   if (!booking) return res.status(404).json({ error: "booking not found" });
   const items = db.prepare("SELECT * FROM booking_items WHERE booking_id = ?").all(req.params.id);
-  res.json({ ...booking, items });
+  res.json({ ...booking, items: items.map(serializeItem) });
 });
 
 router.post("/api/bookings", auth(["ops.write"]), (req, res) => {
@@ -82,8 +85,8 @@ router.post("/api/bookings/:id/items", auth(["ops.write"]), (req, res) => {
 
   const i = parsed.data;
   const result = db.prepare(
-    "INSERT INTO booking_items (booking_id, description, quantity, unit_price_aed) VALUES (?, ?, ?, ?)"
-  ).run(req.params.id, i.description, i.quantity, i.unitPriceAed);
+    "INSERT INTO booking_items (booking_id, description, quantity, unit_price_aed_fils) VALUES (?, ?, ?, ?)"
+  ).run(req.params.id, i.description, i.quantity, toFils(i.unitPriceAed));
 
   res.status(201).json({ id: Number(result.lastInsertRowid), bookingId: Number(req.params.id), ...i });
 });

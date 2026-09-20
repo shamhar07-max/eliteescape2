@@ -3,10 +3,17 @@ import { z } from "zod";
 import { db } from "../db.js";
 import { auth } from "../middleware/auth.js";
 import { notifyRole } from "../lib/notify.js";
+import { toFils, toAed } from "../lib/money.js";
 
 export const router = Router();
 
-const round2 = (n) => Math.round(n * 100) / 100;
+const serializePayslip = (row) => ({
+  ...row,
+  basic_salary_aed: toAed(row.basic_salary_aed_fils),
+  allowances_aed: toAed(row.allowances_aed_fils),
+  deductions_aed: toAed(row.deductions_aed_fils),
+  net_pay_aed: toAed(row.net_pay_aed_fils),
+});
 
 router.get("/api/payroll-runs", auth(["accounting.read"]), (req, res) => {
   const rows = db.prepare("SELECT * FROM payroll_runs ORDER BY period_year DESC, period_month DESC LIMIT 100").all();
@@ -20,8 +27,8 @@ router.get("/api/payroll-runs/:id", auth(["accounting.read"]), (req, res) => {
     SELECT p.*, e.full_name AS employee_name, e.job_title FROM payslips p
     JOIN employees e ON e.id = p.employee_id WHERE p.payroll_run_id = ? ORDER BY e.full_name ASC
   `).all(req.params.id);
-  const totalNetAed = round2(payslips.reduce((sum, p) => sum + p.net_pay_aed, 0));
-  res.json({ ...run, payslips, totalNetAed });
+  const totalNetFils = payslips.reduce((sum, p) => sum + p.net_pay_aed_fils, 0);
+  res.json({ ...run, payslips: payslips.map(serializePayslip), totalNetAed: toAed(totalNetFils) });
 });
 
 const createRunSchema = z.object({
@@ -40,16 +47,16 @@ router.post("/api/payroll-runs", auth(["accounting.write"]), (req, res) => {
   const existing = db.prepare("SELECT id FROM payroll_runs WHERE period_year = ? AND period_month = ?").get(periodYear, periodMonth);
   if (existing) return res.status(409).json({ error: "a payroll run already exists for this period" });
 
-  const employees = db.prepare("SELECT id, basic_salary_aed FROM employees WHERE status != 'terminated'").all();
+  const employees = db.prepare("SELECT id, basic_salary_aed_fils FROM employees WHERE status != 'terminated'").all();
   if (!employees.length) return res.status(400).json({ error: "no active employees to run payroll for" });
 
   const runResult = db.prepare("INSERT INTO payroll_runs (period_year, period_month) VALUES (?, ?)").run(periodYear, periodMonth);
   const runId = Number(runResult.lastInsertRowid);
 
   const insertPayslip = db.prepare(
-    "INSERT INTO payslips (payroll_run_id, employee_id, basic_salary_aed, net_pay_aed) VALUES (?, ?, ?, ?)"
+    "INSERT INTO payslips (payroll_run_id, employee_id, basic_salary_aed_fils, net_pay_aed_fils) VALUES (?, ?, ?, ?)"
   );
-  for (const e of employees) insertPayslip.run(runId, e.id, e.basic_salary_aed, e.basic_salary_aed);
+  for (const e of employees) insertPayslip.run(runId, e.id, e.basic_salary_aed_fils, e.basic_salary_aed_fils);
 
   db.prepare("INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, detail) VALUES (?, 'create', 'payroll_run', ?, ?)")
     .run(req.user.id, runId, `${periodYear}-${String(periodMonth).padStart(2, "0")}, ${employees.length} employees`);
@@ -69,14 +76,14 @@ router.patch("/api/payslips/:id", auth(["accounting.write"]), (req, res) => {
   if (!payslip) return res.status(404).json({ error: "payslip not found" });
   if (payslip.run_status !== "draft") return res.status(409).json({ error: "cannot edit a payslip once its run is processed" });
 
-  const allowances = parsed.data.allowancesAed ?? payslip.allowances_aed;
-  const deductions = parsed.data.deductionsAed ?? payslip.deductions_aed;
-  const netPay = round2(payslip.basic_salary_aed + allowances - deductions);
+  const allowancesFils = parsed.data.allowancesAed !== undefined ? toFils(parsed.data.allowancesAed) : payslip.allowances_aed_fils;
+  const deductionsFils = parsed.data.deductionsAed !== undefined ? toFils(parsed.data.deductionsAed) : payslip.deductions_aed_fils;
+  const netPayFils = payslip.basic_salary_aed_fils + allowancesFils - deductionsFils;
 
-  db.prepare("UPDATE payslips SET allowances_aed = ?, deductions_aed = ?, net_pay_aed = ? WHERE id = ?")
-    .run(allowances, deductions, netPay, req.params.id);
+  db.prepare("UPDATE payslips SET allowances_aed_fils = ?, deductions_aed_fils = ?, net_pay_aed_fils = ? WHERE id = ?")
+    .run(allowancesFils, deductionsFils, netPayFils, req.params.id);
 
-  res.json({ id: Number(req.params.id), allowancesAed: allowances, deductionsAed: deductions, netPayAed: netPay });
+  res.json({ id: Number(req.params.id), allowancesAed: toAed(allowancesFils), deductionsAed: toAed(deductionsFils), netPayAed: toAed(netPayFils) });
 });
 
 router.patch("/api/payroll-runs/:id/process", auth(["accounting.write"]), (req, res) => {
@@ -96,7 +103,8 @@ router.patch("/api/payroll-runs/:id/pay", auth(["accounting.write"]), async (req
   db.prepare("UPDATE payroll_runs SET status = 'paid' WHERE id = ?").run(req.params.id);
   db.prepare("UPDATE payslips SET status = 'paid', paid_at = datetime('now') WHERE payroll_run_id = ?").run(req.params.id);
 
-  const { totalNetAed } = db.prepare("SELECT COALESCE(SUM(net_pay_aed), 0) AS totalNetAed FROM payslips WHERE payroll_run_id = ?").get(req.params.id);
+  const { totalNetFils } = db.prepare("SELECT COALESCE(SUM(net_pay_aed_fils), 0) AS totalNetFils FROM payslips WHERE payroll_run_id = ?").get(req.params.id);
+  const totalNetAed = toAed(totalNetFils);
   db.prepare("INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, detail) VALUES (?, 'pay', 'payroll_run', ?, ?)")
     .run(req.user.id, req.params.id, `AED ${totalNetAed} disbursed`);
 
