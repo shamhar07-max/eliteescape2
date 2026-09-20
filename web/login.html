@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Sign in — Elite Escape Platform</title>
+<link rel="stylesheet" href="/assets/admin.css">
+</head>
+<body class="login-body">
+<form class="login-card" id="loginForm">
+  <h1>Elite Escape</h1>
+  <p class="muted">Business platform</p>
+  <div class="field">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" required autocomplete="username">
+  </div>
+  <div class="field">
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" required autocomplete="current-password">
+  </div>
+  <p class="error" id="loginError" hidden></p>
+  <button type="submit" class="btn-primary">Sign in</button>
+</form>
+<script>
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+  const errEl = document.getElementById("loginError");
+  errEl.hidden = true;
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      errEl.textContent = data.error || "Sign in failed";
+      errEl.hidden = false;
+      return;
+    }
+    location.href = "/index.html";
+  } catch (err) {
+    errEl.textContent = "Could not reach the server";
+    errEl.hidden = false;
+  }
+});
+</script>
+</body>
+</html>

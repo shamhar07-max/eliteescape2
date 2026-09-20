@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Elite Escape Platform</title>
+<link rel="stylesheet" href="/assets/admin.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">Elite Escape</div>
+    <nav>
+      <button class="nav-btn active" data-tab="leads">Leads</button>
+      <button class="nav-btn" data-tab="customers">Customers</button>
+      <button class="nav-btn" data-tab="notifications">Notifications <span class="badge" id="unreadBadge" hidden></span></button>
+    </nav>
+    <div class="sidebar-foot">
+      <div id="whoami" class="muted"></div>
+      <button id="logoutBtn" class="btn-link">Sign out</button>
+    </div>
+  </aside>
+
+  <main class="content">
+    <section id="tab-leads" class="tab">
+      <div class="tab-head">
+        <h1>Leads</h1>
+        <select id="statusFilter">
+          <option value="">All statuses</option>
+          <option value="new">New</option>
+          <option value="contacted">Contacted</option>
+          <option value="quoted">Quoted</option>
+          <option value="won">Won</option>
+          <option value="lost">Lost</option>
+        </select>
+      </div>
+      <div class="split">
+        <div class="list" id="leadsList"></div>
+        <div class="detail" id="leadDetail"><p class="muted">Select a lead to view details.</p></div>
+      </div>
+    </section>
+
+    <section id="tab-customers" class="tab" hidden>
+      <div class="tab-head"><h1>Customers</h1></div>
+      <div class="list wide" id="customersList"></div>
+    </section>
+
+    <section id="tab-notifications" class="tab" hidden>
+      <div class="tab-head">
+        <h1>Notifications</h1>
+        <button id="markAllRead" class="btn-outline">Mark all read</button>
+      </div>
+      <div class="list wide" id="notificationsList"></div>
+    </section>
+  </main>
+</div>
+<script src="/assets/admin.js"></script>
+</body>
+</html>
