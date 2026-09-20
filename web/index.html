@@ -16,6 +16,7 @@
       <button class="nav-btn" data-tab="bookings">Bookings</button>
       <button class="nav-btn" data-tab="invoices">Invoices</button>
       <button class="nav-btn" data-tab="notifications">Notifications <span class="badge" id="unreadBadge" hidden></span></button>
+      <button class="nav-btn" data-tab="conversations">AI Conversations</button>
     </nav>
     <div class="sidebar-foot">
       <div id="whoami" class="muted"></div>
@@ -69,6 +70,14 @@
         <button id="markAllRead" class="btn-outline">Mark all read</button>
       </div>
       <div class="list wide" id="notificationsList"></div>
+    </section>
+
+    <section id="tab-conversations" class="tab" hidden>
+      <div class="tab-head"><h1>AI Conversations</h1></div>
+      <div class="split">
+        <div class="list" id="conversationsList"></div>
+        <div class="detail" id="conversationDetail"><p class="muted">Select a conversation to view the thread.</p></div>
+      </div>
     </section>
   </main>
 </div>

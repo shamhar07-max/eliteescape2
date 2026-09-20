@@ -171,6 +171,26 @@ CREATE TABLE IF NOT EXISTS payments (
   recorded_by_user_id INTEGER REFERENCES users(id)
 );
 
+-- ===== AI employees (Phase 4) =====
+CREATE TABLE IF NOT EXISTS conversations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  customer_id INTEGER REFERENCES customers(id),
+  agent_type TEXT NOT NULL,                  -- 'receptionist', 'travel_consultant'
+  channel TEXT NOT NULL DEFAULT 'website_chat',
+  status TEXT NOT NULL DEFAULT 'open',       -- 'open', 'closed', 'handed_off'
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+  role TEXT NOT NULL,                        -- 'user', 'assistant', 'tool'
+  content TEXT NOT NULL,
+  tool_name TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
 CREATE INDEX IF NOT EXISTS idx_leads_owner ON leads(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_lead_activities_lead ON lead_activities(lead_id);
@@ -183,6 +203,8 @@ CREATE INDEX IF NOT EXISTS idx_invoices_customer ON invoices(customer_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_booking ON invoices(booking_id);
 CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
 CREATE INDEX IF NOT EXISTS idx_payments_invoice ON payments(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_customer ON conversations(customer_id);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
 `;
 
 export const SEED_ROLES = [

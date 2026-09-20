@@ -26,6 +26,7 @@
     if (tab === "bookings") loadBookings();
     if (tab === "invoices") loadInvoices();
     if (tab === "notifications") loadNotifications();
+    if (tab === "conversations") loadConversations();
   }));
 
   const timeAgo = (iso) => {
@@ -257,6 +258,40 @@
       await loadInvoices();
       selectInvoice(id);
     });
+  }
+
+  // ===== AI Conversations =====
+  let conversationsCache = [], selectedConversationId = null;
+
+  async function loadConversations() {
+    await loadCustomersIndex();
+    conversationsCache = await api("/api/conversations");
+    $("#conversationsList").innerHTML = conversationsCache.map(c => `
+      <div class="card${c.id === selectedConversationId ? " selected" : ""}" data-id="${c.id}">
+        <div class="card-top">
+          <span class="card-title">${c.customer_name || (c.customer_id ? customerName(c.customer_id) : "Anonymous")}</span>
+          <span class="status-pill status-${c.status === "handed_off" ? "quoted" : c.status === "closed" ? "lost" : "new"}">${c.status}</span>
+        </div>
+        <div class="card-sub">${c.agent_type.replace("_", " ")} · ${c.channel}</div>
+        <div class="card-sub">${timeAgo(c.updated_at)}</div>
+      </div>`).join("") || "<p class='muted'>No conversations yet.</p>";
+    $$(".card[data-id]", $("#conversationsList")).forEach(card => card.addEventListener("click", () => selectConversation(Number(card.dataset.id))));
+  }
+
+  async function selectConversation(id) {
+    selectedConversationId = id;
+    $$(".card", $("#conversationsList")).forEach(c => c.classList.toggle("selected", Number(c.dataset.id) === id));
+    const convo = conversationsCache.find(c => c.id === id);
+    const messages = await api(`/api/conversations/${id}/messages`);
+
+    $("#conversationDetail").innerHTML = `
+      <h2>${convo.customer_name || (convo.customer_id ? customerName(convo.customer_id) : "Anonymous")}</h2>
+      <p class="muted">${convo.agent_type.replace("_", " ")} · ${convo.channel} · <span class="status-pill status-${convo.status === "handed_off" ? "quoted" : convo.status === "closed" ? "lost" : "new"}">${convo.status}</span></p>
+      <div class="timeline">${messages.map(m => `
+        <div class="timeline-item">
+          <b>${m.role === "user" ? "Customer" : m.role === "assistant" ? "AI" : m.role}:</b> ${m.content}
+          <div class="meta">${timeAgo(m.created_at)}</div>
+        </div>`).join("") || "<p class='muted'>No messages yet.</p>"}</div>`;
   }
 
   // ===== Notifications =====

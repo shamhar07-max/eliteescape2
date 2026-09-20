@@ -48,8 +48,12 @@ before deploying — it defaults to local dev ports only.
 - [x] **Phase 3 — Travel Operations + Accounting core**: bookings/itineraries,
       sequential invoicing (UAE FTA-compliant numbering), 5% UAE VAT,
       payments with auto-paid-status, dashboard UI for both
-- [ ] **Phase 4 — First AI employees**: Travel Consultant + Receptionist,
-      wired to real CRM data
+- [x] **Phase 4 — First AI employees**: AI Receptionist + Travel Consultant,
+      real tool-use (create_lead, get_customer_summary, request_human_handoff)
+      wired to real CRM data, conversation persistence, staff oversight UI.
+      Runs on a `mock`/`anthropic` provider switch (`AI_PROVIDER` env var) —
+      mock mode is fully functional today with zero external dependency;
+      drop in `ANTHROPIC_API_KEY` for real Claude intelligence, no code changes
 - [ ] **Phase 5 — HRMS / Payroll / Procurement**
 - [ ] **Phase 6 — Mobile apps** (customer, employee, owner)
 - [ ] **Phase 7 — Marketing automation / SEO tooling**
