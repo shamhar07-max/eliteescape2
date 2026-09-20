@@ -80,3 +80,17 @@ before deploying — it defaults to local dev ports only.
       password change, user management (role changes, activate/deactivate,
       force-logout by revoking sessions), a full audit-log viewer, and a
       system health dashboard (business KPIs + request/error counters)
+- [x] **Phase 9 — Quotations + Visa Case Management**: version-controlled
+      quotations (never overwritten — a revision creates a new version and
+      marks the prior one `superseded`), accepting a quotation creates a
+      booking directly from its line items (closing the spec's own
+      Inquiry→Lead→Quote→Booking pipeline) and flips the source lead to
+      `won`. Visa case management is a from-scratch module: cases,
+      applicants, a per-applicant document checklist (status tracking —
+      actual file storage still needs object storage, see
+      `docs/ELITE_ESCAPE_INTEGRATION_MAP.md`), and full status history
+      across the real 14-state lifecycle (new → ... → completed/rejected/
+      withdrawn/cancelled). Also fixes the decimal-money bug flagged in
+      `docs/ELITE_ESCAPE_GAP_ANALYSIS.md` §6 — every AED column moved from
+      floating-point to integer fils, with a lossless migration for
+      existing data

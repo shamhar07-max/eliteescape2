@@ -40,7 +40,9 @@
     const tab = btn.dataset.tab;
     $$(".tab").forEach(t => t.hidden = t.id !== `tab-${tab}`);
     if (tab === "customers") loadCustomers();
+    if (tab === "quotations") loadQuotations();
     if (tab === "bookings") loadBookings();
+    if (tab === "visa") loadVisaCases();
     if (tab === "invoices") loadInvoices();
     if (tab === "notifications") loadNotifications();
     if (tab === "conversations") loadConversations();
@@ -147,6 +149,94 @@
       </div>`).join("") || "<p class='muted'>No customers yet.</p>";
   }
 
+  // ===== Quotations =====
+  let quotationsCache = [];
+
+  function parseItemsText(text) {
+    return text.trim().split("\n").map(line => line.trim()).filter(Boolean).map(line => {
+      const [serviceType, description, quantity, unitCostAed, unitPriceAed] = line.split("|").map(s => s.trim());
+      return { serviceType, description, quantity: Number(quantity), unitCostAed: Number(unitCostAed || 0), unitPriceAed: Number(unitPriceAed) };
+    });
+  }
+
+  async function loadQuotations() {
+    await loadCustomersIndex();
+    const select = $("#quoteCustomerSelect");
+    select.innerHTML = Object.values(customersCache).map(c => `<option value="${c.id}">${c.full_name}</option>`).join("");
+
+    const status = "";
+    quotationsCache = await api(`/api/quotations${status}`);
+    $("#quotationsList").innerHTML = quotationsCache.map(q => `
+      <div class="card" data-id="${q.id}">
+        <div class="card-top">
+          <span class="card-title">${q.quotation_number} v${q.version}</span>
+          <span class="status-pill status-${q.status === "accepted" ? "won" : q.status === "rejected" || q.status === "expired" ? "lost" : q.status === "sent" ? "quoted" : "new"}">${q.status}</span>
+        </div>
+        <div class="card-sub">${customerName(q.customer_id)} — AED ${q.total_aed}</div>
+      </div>`).join("") || "<p class='muted'>No quotations yet.</p>";
+    $$(".card[data-id]", $("#quotationsList")).forEach(card => card.addEventListener("click", () => selectQuotation(Number(card.dataset.id))));
+  }
+
+  async function selectQuotation(id) {
+    $$(".card", $("#quotationsList")).forEach(c => c.classList.toggle("selected", Number(c.dataset.id) === id));
+    const q = await api(`/api/quotations/${id}`);
+
+    $("#quotationDetail").innerHTML = `
+      <h2>${q.quotation_number} <span class="muted">v${q.version}</span></h2>
+      <p class="muted">${customerName(q.customer_id)} · <span class="status-pill status-${q.status === "accepted" ? "won" : q.status === "rejected" || q.status === "expired" ? "lost" : q.status === "sent" ? "quoted" : "new"}">${q.status}</span></p>
+      <table>
+        <tr><td>Valid until</td><td>${q.valid_until || "—"}</td></tr>
+        <tr><td>Subtotal</td><td>AED ${q.subtotal_aed}</td></tr>
+        <tr><td>Discount</td><td>AED ${q.discount_aed}</td></tr>
+        <tr><td>Service fee</td><td>AED ${q.service_fee_aed}</td></tr>
+        <tr><td><b>Total</b></td><td><b>AED ${q.total_aed}</b></td></tr>
+      </table>
+      <h3>Line items</h3>
+      <div class="timeline">${q.items.map(i => `
+        <div class="timeline-item">${i.service_type} — ${i.description} — ${i.quantity} × AED ${i.unit_price_aed} = AED ${i.line_total_aed}</div>`).join("")}</div>
+      <h3>Versions</h3>
+      <div class="timeline">${q.versions.map(v => `
+        <div class="timeline-item">v${v.version} — ${v.status} <div class="meta">${timeAgo(v.created_at)}</div></div>`).join("")}</div>
+      ${q.status === "draft" || q.status === "sent" ? `
+      <div class="row" style="margin-top:16px">
+        ${q.status === "draft" ? `<button class="btn-outline" id="sendQuoteBtn">Mark sent</button>` : ""}
+        <button class="btn-outline" id="acceptQuoteBtn">Accept → create booking</button>
+        <button class="btn-outline" id="rejectQuoteBtn">Reject</button>
+      </div>` : ""}`;
+
+    const sendBtn = $("#sendQuoteBtn"), acceptBtn = $("#acceptQuoteBtn"), rejectBtn = $("#rejectQuoteBtn");
+    sendBtn && sendBtn.addEventListener("click", async () => {
+      await api(`/api/quotations/${id}/status`, { method: "PATCH", body: JSON.stringify({ status: "sent" }) });
+      await loadQuotations(); selectQuotation(id);
+    });
+    acceptBtn && acceptBtn.addEventListener("click", async () => {
+      try {
+        const res = await api(`/api/quotations/${id}/accept`, { method: "POST" });
+        alert(`Booking #${res.bookingId} created.`);
+        await loadQuotations(); selectQuotation(id);
+      } catch (err) { alert(err.message); }
+    });
+    rejectBtn && rejectBtn.addEventListener("click", async () => {
+      await api(`/api/quotations/${id}/status`, { method: "PATCH", body: JSON.stringify({ status: "rejected" }) });
+      await loadQuotations(); selectQuotation(id);
+    });
+  }
+
+  $("#quotationForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    try {
+      const items = parseItemsText(fd.get("itemsText"));
+      await api("/api/quotations", { method: "POST", body: JSON.stringify({
+        customerId: Number(fd.get("customerId")), leadId: fd.get("leadId") ? Number(fd.get("leadId")) : undefined,
+        validUntil: fd.get("validUntil") || undefined, discountAed: Number(fd.get("discountAed") || 0),
+        serviceFeeAed: Number(fd.get("serviceFeeAed") || 0), items,
+      }) });
+      e.target.reset();
+      await loadQuotations();
+    } catch (err) { alert(err.message); }
+  });
+
   // ===== Bookings =====
   let bookingsCache = [], selectedBookingId = null;
 
@@ -217,6 +307,112 @@
       selectInvoice(inv.id);
     });
   }
+
+  // ===== Visa Cases =====
+  const VISA_STATUSES = [
+    "new", "documents_requested", "documents_received", "internal_review", "ready_for_submission",
+    "submitted", "appointment_required", "additional_documents_requested", "under_processing",
+    "decision_received", "completed", "rejected", "withdrawn", "cancelled",
+  ];
+  let visaCasesCache = [];
+
+  const visaStatusPill = (s) => s === "completed" ? "won" : ["rejected", "withdrawn", "cancelled"].includes(s) ? "lost" : s === "new" ? "new" : "quoted";
+
+  async function loadVisaCases() {
+    await loadCustomersIndex();
+    const select = $("#visaCustomerSelect");
+    select.innerHTML = Object.values(customersCache).map(c => `<option value="${c.id}">${c.full_name}</option>`).join("");
+
+    visaCasesCache = await api("/api/visa-cases");
+    $("#visaCasesList").innerHTML = visaCasesCache.map(v => `
+      <div class="card" data-id="${v.id}">
+        <div class="card-top">
+          <span class="card-title">${v.case_number}</span>
+          <span class="status-pill status-${visaStatusPill(v.status)}">${v.status.replace(/_/g, " ")}</span>
+        </div>
+        <div class="card-sub">${customerName(v.customer_id)} — ${v.destination_country} (${v.visa_type})</div>
+      </div>`).join("") || "<p class='muted'>No visa cases yet.</p>";
+    $$(".card[data-id]", $("#visaCasesList")).forEach(card => card.addEventListener("click", () => selectVisaCase(Number(card.dataset.id))));
+  }
+
+  async function selectVisaCase(id) {
+    $$(".card", $("#visaCasesList")).forEach(c => c.classList.toggle("selected", Number(c.dataset.id) === id));
+    const v = await api(`/api/visa-cases/${id}`);
+
+    $("#visaCaseDetail").innerHTML = `
+      <h2>${v.case_number}</h2>
+      <p class="muted">${customerName(v.customer_id)} · ${v.destination_country} · ${v.visa_type}</p>
+      <select id="visaStatusSelect" style="margin-bottom:10px">
+        ${VISA_STATUSES.map(s => `<option value="${s}"${s === v.status ? " selected" : ""}>${s.replace(/_/g, " ")}</option>`).join("")}
+      </select>
+      <table>
+        <tr><td>Fee</td><td>${v.fee_aed != null ? "AED " + v.fee_aed : "—"}</td></tr>
+        <tr><td>Submission ref</td><td>${v.submission_reference || "—"}</td></tr>
+        <tr><td>Appointment</td><td>${v.appointment_date || "—"}</td></tr>
+      </table>
+      <h3>Applicants</h3>
+      <div class="timeline">${v.applicants.map(a => `
+        <div class="timeline-item">${a.full_name}${a.nationality ? " — " + a.nationality : ""}${a.passport_expiry ? " — passport exp. " + a.passport_expiry : ""}</div>`).join("") || "<p class='muted'>No applicants yet.</p>"}</div>
+      <form class="note-form" id="applicantForm" style="flex-wrap:wrap">
+        <input name="fullName" placeholder="Applicant full name" required style="flex:1.5">
+        <input name="nationality" placeholder="Nationality" style="flex:1">
+        <input name="passportExpiry" type="date" style="width:150px">
+        <button type="submit">Add</button>
+      </form>
+      <h3>Documents</h3>
+      <div class="timeline">${v.documents.map(d => `
+        <div class="timeline-item">${d.document_type}${d.applicant_id ? " (applicant #" + d.applicant_id + ")" : ""}
+          <span class="status-pill status-${d.status === "received" ? "won" : d.status === "rejected" ? "lost" : "new"}">${d.status}</span>
+          <div class="row" style="margin-top:6px">
+            <button class="btn-outline doc-status-btn" data-id="${d.id}" data-status="received">Received</button>
+            <button class="btn-outline doc-status-btn" data-id="${d.id}" data-status="rejected">Rejected</button>
+          </div>
+        </div>`).join("") || "<p class='muted'>No documents requested yet.</p>"}</div>
+      <form class="note-form" id="documentForm" style="flex-wrap:wrap">
+        <input name="documentType" placeholder="Document type (e.g. passport_copy)" required style="flex:1.5">
+        <input name="applicantId" type="number" placeholder="Applicant ID (optional)" style="width:160px">
+        <button type="submit">Request</button>
+      </form>
+      <h3>Status history</h3>
+      <div class="timeline">${v.statusHistory.map(h => `
+        <div class="timeline-item">${h.status.replace(/_/g, " ")} — ${h.changed_by_name || "system"}${h.note ? " — " + h.note : ""}<div class="meta">${timeAgo(h.created_at)}</div></div>`).join("")}</div>`;
+
+    $("#visaStatusSelect").addEventListener("change", async (e) => {
+      await api(`/api/visa-cases/${id}/status`, { method: "PATCH", body: JSON.stringify({ status: e.target.value }) });
+      await loadVisaCases(); selectVisaCase(id);
+    });
+    $("#applicantForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      await api(`/api/visa-cases/${id}/applicants`, { method: "POST", body: JSON.stringify({
+        fullName: fd.get("fullName"), nationality: fd.get("nationality") || undefined, passportExpiry: fd.get("passportExpiry") || undefined,
+      }) });
+      selectVisaCase(id);
+    });
+    $("#documentForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      await api(`/api/visa-cases/${id}/documents`, { method: "POST", body: JSON.stringify({
+        documentType: fd.get("documentType"), applicantId: fd.get("applicantId") ? Number(fd.get("applicantId")) : undefined,
+      }) });
+      selectVisaCase(id);
+    });
+    $$(".doc-status-btn", $("#visaCaseDetail")).forEach(btn => btn.addEventListener("click", async () => {
+      await api(`/api/visa-documents/${btn.dataset.id}/status`, { method: "PATCH", body: JSON.stringify({ status: btn.dataset.status }) });
+      selectVisaCase(id);
+    }));
+  }
+
+  $("#visaCaseForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    await api("/api/visa-cases", { method: "POST", body: JSON.stringify({
+      customerId: Number(fd.get("customerId")), destinationCountry: fd.get("destinationCountry"),
+      visaType: fd.get("visaType"), feeAed: fd.get("feeAed") ? Number(fd.get("feeAed")) : undefined,
+    }) });
+    e.target.reset();
+    await loadVisaCases();
+  });
 
   // ===== Invoices =====
   let invoicesCache = [], selectedInvoiceId = null;

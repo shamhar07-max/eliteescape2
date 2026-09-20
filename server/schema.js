@@ -82,6 +82,97 @@ CREATE TABLE IF NOT EXISTS lead_activities (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- ===== Quotations (Phase 9) — version-controlled, never overwritten =====
+CREATE TABLE IF NOT EXISTS quotations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  quotation_number TEXT NOT NULL,             -- 'QUO-2026-0001' — shared across all versions of the same quote
+  version INTEGER NOT NULL DEFAULT 1,
+  lead_id INTEGER REFERENCES leads(id),
+  customer_id INTEGER NOT NULL REFERENCES customers(id),
+  status TEXT NOT NULL DEFAULT 'draft',       -- 'draft', 'sent', 'accepted', 'rejected', 'expired', 'superseded'
+  valid_until TEXT,
+  payment_terms TEXT,
+  inclusions TEXT,
+  exclusions TEXT,
+  cancellation_terms TEXT,
+  subtotal_aed_fils INTEGER NOT NULL DEFAULT 0,
+  discount_aed_fils INTEGER NOT NULL DEFAULT 0,
+  service_fee_aed_fils INTEGER NOT NULL DEFAULT 0,
+  total_aed_fils INTEGER NOT NULL DEFAULT 0,
+  supersedes_quotation_id INTEGER REFERENCES quotations(id), -- the version this one revises, if any
+  owner_user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(quotation_number, version)
+);
+
+CREATE TABLE IF NOT EXISTS quotation_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  quotation_id INTEGER NOT NULL REFERENCES quotations(id) ON DELETE CASCADE,
+  service_type TEXT NOT NULL,                 -- 'holiday', 'flight', 'hotel', 'transfer', 'attraction', 'visa', 'insurance'
+  description TEXT NOT NULL,
+  quantity REAL NOT NULL DEFAULT 1,
+  unit_cost_aed_fils INTEGER NOT NULL DEFAULT 0,   -- supplier cost — staff-only visibility, never shown to the customer
+  unit_price_aed_fils INTEGER NOT NULL,            -- selling price
+  line_total_aed_fils INTEGER NOT NULL
+);
+
+-- ===== Visa Case Management (Phase 9) =====
+CREATE TABLE IF NOT EXISTS visa_cases (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  case_number TEXT UNIQUE NOT NULL,           -- 'VISA-2026-0001'
+  customer_id INTEGER NOT NULL REFERENCES customers(id),
+  lead_id INTEGER REFERENCES leads(id),
+  booking_id INTEGER REFERENCES bookings(id),
+  destination_country TEXT NOT NULL,
+  visa_type TEXT NOT NULL,                    -- free text: 'Tourist', 'Business', 'Transit', ...
+  status TEXT NOT NULL DEFAULT 'new',         -- see VISA_STATUSES in visa.routes.js for the full lifecycle
+  submission_reference TEXT,
+  appointment_date TEXT,
+  fee_aed_fils INTEGER,
+  notes TEXT,
+  responsible_user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS visa_applicants (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  visa_case_id INTEGER NOT NULL REFERENCES visa_cases(id) ON DELETE CASCADE,
+  full_name TEXT NOT NULL,
+  passport_number TEXT,                       -- sensitive — see docs/ELITE_ESCAPE_SECURITY_MODEL.md
+  passport_expiry TEXT,
+  nationality TEXT,
+  date_of_birth TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Tracks the document CHECKLIST (type + status) per applicant. Storing the
+-- actual file bytes needs object storage (see docs/ELITE_ESCAPE_
+-- INTEGRATION_MAP.md) — not built yet, so file_path stays null until that
+-- exists. This is still real, useful functionality on its own: staff can
+-- see exactly which documents are outstanding for which applicant.
+CREATE TABLE IF NOT EXISTS visa_documents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  visa_case_id INTEGER NOT NULL REFERENCES visa_cases(id) ON DELETE CASCADE,
+  applicant_id INTEGER REFERENCES visa_applicants(id) ON DELETE CASCADE,
+  document_type TEXT NOT NULL,                -- 'passport_copy', 'photo', 'bank_statement', 'itinerary', ...
+  status TEXT NOT NULL DEFAULT 'requested',   -- 'requested', 'received', 'rejected'
+  file_path TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS visa_case_status_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  visa_case_id INTEGER NOT NULL REFERENCES visa_cases(id) ON DELETE CASCADE,
+  status TEXT NOT NULL,
+  changed_by_user_id INTEGER REFERENCES users(id),
+  note TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- ===== Audit (every later module writes here — non-negotiable for a business platform) =====
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -111,6 +202,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   customer_id INTEGER NOT NULL REFERENCES customers(id),
   lead_id INTEGER REFERENCES leads(id),      -- the lead this booking was won from, if any
+  quotation_id INTEGER REFERENCES quotations(id), -- the accepted quotation this booking was created from, if any
   booking_type TEXT NOT NULL,                -- 'holiday', 'visa', 'attraction', 'flight', 'hotel', 'insurance'
   description TEXT NOT NULL,
   travel_date_start TEXT,
@@ -358,6 +450,17 @@ CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status);
 CREATE INDEX IF NOT EXISTS idx_campaign_sends_campaign ON campaign_sends(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_seo_audit_pages_audit ON seo_audit_pages(audit_id);
 CREATE INDEX IF NOT EXISTS idx_seo_content_items_status ON seo_content_items(status);
+CREATE INDEX IF NOT EXISTS idx_quotations_number ON quotations(quotation_number);
+CREATE INDEX IF NOT EXISTS idx_quotations_customer ON quotations(customer_id);
+CREATE INDEX IF NOT EXISTS idx_quotations_lead ON quotations(lead_id);
+CREATE INDEX IF NOT EXISTS idx_quotations_status ON quotations(status);
+CREATE INDEX IF NOT EXISTS idx_quotation_items_quotation ON quotation_items(quotation_id);
+CREATE INDEX IF NOT EXISTS idx_visa_cases_customer ON visa_cases(customer_id);
+CREATE INDEX IF NOT EXISTS idx_visa_cases_status ON visa_cases(status);
+CREATE INDEX IF NOT EXISTS idx_visa_applicants_case ON visa_applicants(visa_case_id);
+CREATE INDEX IF NOT EXISTS idx_visa_documents_case ON visa_documents(visa_case_id);
+CREATE INDEX IF NOT EXISTS idx_visa_documents_applicant ON visa_documents(applicant_id);
+CREATE INDEX IF NOT EXISTS idx_visa_status_history_case ON visa_case_status_history(visa_case_id);
 `;
 
 export const SEED_ROLES = [

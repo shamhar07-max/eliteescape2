@@ -13,7 +13,9 @@
     <nav>
       <button class="nav-btn active" data-tab="leads">Leads</button>
       <button class="nav-btn" data-tab="customers">Customers</button>
+      <button class="nav-btn" data-tab="quotations">Quotations</button>
       <button class="nav-btn" data-tab="bookings">Bookings</button>
+      <button class="nav-btn" data-tab="visa">Visa Cases</button>
       <button class="nav-btn" data-tab="invoices">Invoices</button>
       <button class="nav-btn" data-tab="notifications">Notifications <span class="badge" id="unreadBadge" hidden></span></button>
       <button class="nav-btn" data-tab="conversations">AI Conversations</button>
@@ -61,11 +63,43 @@
       <div class="list wide" id="customersList"></div>
     </section>
 
+    <section id="tab-quotations" class="tab" hidden>
+      <div class="tab-head"><h1>Quotations</h1></div>
+      <form class="note-form" id="quotationForm" style="flex-wrap:wrap">
+        <select name="customerId" id="quoteCustomerSelect" required style="flex:1.2"></select>
+        <input name="leadId" type="number" placeholder="Lead ID (optional)" style="width:130px">
+        <input name="validUntil" type="date" style="width:150px">
+        <input name="discountAed" type="number" step="0.01" placeholder="Discount AED" style="width:120px">
+        <input name="serviceFeeAed" type="number" step="0.01" placeholder="Service fee AED" style="width:130px">
+        <textarea name="itemsText" required placeholder="One item per line: serviceType|description|quantity|unitCostAed|unitPriceAed&#10;e.g. hotel|Tokyo hotel 5 nights|5|400|600" style="flex:1 1 100%;min-height:60px;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;font-size:13.5px;font-family:inherit"></textarea>
+        <button type="submit">Create quotation</button>
+      </form>
+      <div class="split" style="margin-top:16px">
+        <div class="list" id="quotationsList"></div>
+        <div class="detail" id="quotationDetail"><p class="muted">Select a quotation to view details.</p></div>
+      </div>
+    </section>
+
     <section id="tab-bookings" class="tab" hidden>
       <div class="tab-head"><h1>Bookings</h1></div>
       <div class="split">
         <div class="list" id="bookingsList"></div>
         <div class="detail" id="bookingDetail"><p class="muted">Select a booking to view details.</p></div>
+      </div>
+    </section>
+
+    <section id="tab-visa" class="tab" hidden>
+      <div class="tab-head"><h1>Visa Cases</h1></div>
+      <form class="note-form" id="visaCaseForm">
+        <select name="customerId" id="visaCustomerSelect" required style="flex:1.2"></select>
+        <input name="destinationCountry" placeholder="Destination country" required style="flex:1">
+        <input name="visaType" placeholder="Visa type (e.g. Tourist)" required style="flex:1">
+        <input name="feeAed" type="number" step="0.01" placeholder="Fee AED" style="width:110px">
+        <button type="submit">Create case</button>
+      </form>
+      <div class="split" style="margin-top:16px">
+        <div class="list" id="visaCasesList"></div>
+        <div class="detail" id="visaCaseDetail"><p class="muted">Select a visa case to view details.</p></div>
       </div>
     </section>
 
