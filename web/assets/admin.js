@@ -34,10 +34,8 @@
   });
 
   // tabs
-  $$(".nav-btn").forEach(btn => btn.addEventListener("click", () => {
-    $$(".nav-btn").forEach(b => b.classList.remove("active"));
-    btn.classList.add("active");
-    const tab = btn.dataset.tab;
+  function activateTab(tab) {
+    $$(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
     $$(".tab").forEach(t => t.hidden = t.id !== `tab-${tab}`);
     if (tab === "customers") loadCustomers();
     if (tab === "quotations") loadQuotations();
@@ -48,6 +46,7 @@
     if (tab === "conversations") loadConversations();
     if (tab === "ai-assistants") loadAiAssistants();
     if (tab === "accounting") loadGlSubtab(currentGlSubtab);
+    if (tab === "reports") loadReportSubtab(currentReportSubtab);
     if (tab === "employees") loadEmployees();
     if (tab === "leave") loadLeaveRequests();
     if (tab === "payroll") loadPayrollRuns();
@@ -55,7 +54,8 @@
     if (tab === "campaigns") loadCampaigns();
     if (tab === "seo") loadSeoTools();
     if (tab === "admin") loadAdminTab();
-  }));
+  }
+  $$(".nav-btn").forEach(btn => btn.addEventListener("click", () => activateTab(btn.dataset.tab)));
 
   const timeAgo = (iso) => {
     const s = Math.floor((Date.now() - new Date(iso + "Z")) / 1000);
@@ -708,6 +708,194 @@
       }));
     }
   }
+
+  // ===== Reports / BI =====
+  let currentReportSubtab = "overview";
+
+  $$(".report-subtab-btn").forEach(btn => btn.addEventListener("click", () => {
+    $$(".report-subtab-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentReportSubtab = btn.dataset.subtab;
+    loadReportSubtab(currentReportSubtab);
+  }));
+
+  const statTile = (label, value) => `<div class="stat-tile"><div class="stat-value">${value}</div><div class="stat-label">${label}</div></div>`;
+
+  // A dependency-free bar row: width is this row's share of the series max,
+  // so a monthly trend reads as a chart without pulling in a charting lib.
+  const barRows = (rows, labelKey, valueKey) => {
+    const max = Math.max(1, ...rows.map(r => r[valueKey]));
+    return `<div style="display:flex;flex-direction:column;gap:6px;margin:10px 0 16px">${rows.map(r => `
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:70px;font-size:12px;color:var(--muted)">${r[labelKey]}</div>
+        <div style="flex:1;background:var(--paper);border-radius:4px;overflow:hidden;height:16px">
+          <div style="width:${Math.round((r[valueKey] / max) * 100)}%;background:var(--ink);height:100%"></div>
+        </div>
+        <div style="width:70px;font-size:12px;text-align:right">${r[valueKey]}</div>
+      </div>`).join("")}</div>`;
+  };
+
+  async function loadReportSubtab(subtab) {
+    const el = $("#reportSubtabContent");
+    if (subtab === "overview") {
+      const o = await api("/api/reports/overview");
+      el.innerHTML = `
+        <h3>Today &amp; pipeline</h3>
+        <div class="stat-grid">
+          ${statTile("New inquiries today", o.newInquiriesToday)}
+          ${statTile("Unassigned leads", o.unassignedLeads)}
+          ${statTile("Hot opportunities", o.hotOpportunities)}
+          ${statTile("Quotes sent", o.quotesSent)}
+          ${statTile("Confirmed bookings", o.confirmedBookings)}
+          ${statTile("Upcoming departures (14d)", o.upcomingDepartures)}
+          ${statTile("Active visa cases", o.activeVisaCases)}
+          ${statTile("Pending supplier confirmations", o.pendingSupplierConfirmations)}
+        </div>
+        <h3>Finance</h3>
+        <div class="stat-grid">
+          ${statTile("Receivables (AED)", o.accountsReceivableAed.toFixed(2))}
+          ${statTile("Payables (AED)", o.accountsPayableAed.toFixed(2))}
+          ${statTile("Cash collected today (AED)", o.cashCollectedTodayAed.toFixed(2))}
+          ${statTile("Pending approvals", o.pendingApprovals)}
+        </div>
+        <h3>Marketing</h3>
+        <div class="stat-grid">
+          ${statTile("Leads this month", o.marketingLeadsThisMonth)}
+          ${statTile("Elite Reach leads this month", o.eliteReachLeadsThisMonth)}
+        </div>`;
+    } else if (subtab === "sales") {
+      const s = await api("/api/reports/sales");
+      el.innerHTML = `
+        <h3>Pipeline by status</h3>${barRows(s.byStatus, "status", "n")}
+        <h3>Lead conversion</h3>
+        <div class="stat-grid">
+          ${statTile("Total leads", s.totalLeads)}
+          ${statTile("Won", s.wonLeads)}
+          ${statTile("Conversion rate", `${s.conversionRatePct}%`)}
+        </div>
+        <h3>By source</h3>${barRows(s.bySource, "source", "n")}
+        <h3>By interest type</h3>${barRows(s.byInterestType, "interest_type", "n")}
+        <h3>Monthly trend (new vs. won)</h3>
+        <table><tr><th></th>${s.monthlyTrend.map(m => `<th>${m.month}</th>`).join("")}</tr>
+        <tr><td>New leads</td>${s.monthlyTrend.map(m => `<td>${m.newLeads}</td>`).join("")}</tr>
+        <tr><td>Won</td>${s.monthlyTrend.map(m => `<td>${m.won}</td>`).join("")}</tr></table>
+        <h3>Consultant performance</h3>
+        <table class="wide-table"><tr><th>Consultant</th><th>Leads owned</th><th>Won</th></tr>
+        ${s.consultantPerformance.map(c => `<tr><td>${c.userName}</td><td>${c.leadsOwned}</td><td>${c.leadsWon}</td></tr>`).join("") || "<tr><td colspan=3>No assigned leads yet.</td></tr>"}
+        </table>`;
+    } else if (subtab === "bookings") {
+      const b = await api("/api/reports/bookings");
+      el.innerHTML = `
+        <h3>By type</h3>${barRows(b.byType, "booking_type", "n")}
+        <h3>By status</h3>${barRows(b.byStatus, "status", "n")}
+        <h3>Monthly trend</h3>${barRows(b.monthlyTrend, "month", "bookings")}
+        <h3>Top destinations (from flight bookings)</h3>
+        <table class="wide-table"><tr><th>Destination</th><th>Flights</th><th>Revenue (AED)</th></tr>
+        ${b.topDestinations.map(d => `<tr><td>${d.destination}</td><td>${d.flightCount}</td><td>${d.revenueAed.toFixed(2)}</td></tr>`).join("") || "<tr><td colspan=3>No flight services on file yet.</td></tr>"}
+        </table>
+        <h3>Upcoming departures (14 days)</h3>
+        <table class="wide-table"><tr><th>Booking</th><th>Departs</th></tr>
+        ${b.upcomingDepartures.map(d => `<tr><td>#${d.id} ${d.description}</td><td>${d.travel_date_start}</td></tr>`).join("") || "<tr><td colspan=2>None.</td></tr>"}
+        </table>`;
+    } else if (subtab === "visa") {
+      const v = await api("/api/reports/visa");
+      el.innerHTML = `
+        <h3>By status</h3>${barRows(v.byStatus, "status", "n")}
+        <h3>By destination country</h3>${barRows(v.byCountry, "destination_country", "n")}
+        <div class="stat-grid">${statTile("Avg. days to complete", v.avgDaysToComplete ?? "—")}</div>`;
+    } else if (subtab === "finance") {
+      const f = await api("/api/reports/finance");
+      el.innerHTML = `
+        <div class="stat-grid">
+          ${statTile("Receivables (AED)", f.receivablesAed.toFixed(2))}
+          ${statTile("Payables (AED)", f.payablesAed.toFixed(2))}
+          ${statTile("Gross profit (AED)", f.profitability.grossProfitAed.toFixed(2))}
+          ${statTile("Cancelled bookings", f.cancelledBookings)}
+          ${statTile("Customer repeat rate", `${f.customerRepeatRate.repeatRatePct}%`)}
+        </div>
+        <h3>Monthly revenue &amp; cash collected (AED)</h3>
+        <table><tr><th></th>${f.monthlyTrend.map(m => `<th>${m.month}</th>`).join("")}</tr>
+        <tr><td>Revenue</td>${f.monthlyTrend.map(m => `<td>${m.revenueAed.toFixed(2)}</td>`).join("")}</tr>
+        <tr><td>Cash collected</td>${f.monthlyTrend.map(m => `<td>${m.cashCollectedAed.toFixed(2)}</td>`).join("")}</tr></table>
+        <h3>Profitability</h3>
+        <table>
+          <tr><td>Total sell</td><td>AED ${f.profitability.totalSellAed.toFixed(2)}</td></tr>
+          <tr><td>Total supplier cost</td><td>AED ${f.profitability.totalCostAed.toFixed(2)}</td></tr>
+          <tr><td><b>Gross profit</b></td><td><b>AED ${f.profitability.grossProfitAed.toFixed(2)}</b></td></tr>
+        </table>
+        <h3>Refunds</h3>
+        <table class="wide-table"><tr><th>Type</th><th>Count</th><th>Total (AED)</th></tr>
+        ${f.refunds.byType.map(r => `<tr><td>${r.refundType}</td><td>${r.count}</td><td>${r.totalAed.toFixed(2)}</td></tr>`).join("") || "<tr><td colspan=3>No paid refunds yet.</td></tr>"}
+        </table>`;
+    } else if (subtab === "suppliers") {
+      const s = await api("/api/reports/suppliers");
+      el.innerHTML = `
+        <h3>Top suppliers by spend</h3>
+        <table class="wide-table"><tr><th>Supplier</th><th>Category</th><th>POs</th><th>Total spent (AED)</th></tr>
+        ${s.topSuppliers.map(v => `<tr><td>${v.name}</td><td>${v.category}</td><td>${v.poCount}</td><td>${v.totalSpentAed.toFixed(2)}</td></tr>`).join("") || "<tr><td colspan=4>No purchase orders yet.</td></tr>"}
+        </table>
+        <h3>Purchase orders by status</h3>${barRows(s.poByStatus, "status", "n")}`;
+    } else if (subtab === "marketing") {
+      const m = await api("/api/reports/marketing");
+      el.innerHTML = `
+        <div class="stat-grid">${statTile("Elite Reach leads", m.eliteReachLeads)}</div>
+        <h3>Leads by source</h3>${barRows(m.leadsBySource, "source", "n")}
+        <h3>Campaigns</h3>
+        <table class="wide-table"><tr><th>Campaign</th><th>Channel</th><th>Status</th><th>Sent</th></tr>
+        ${m.campaigns.map(c => `<tr><td>${c.name}</td><td>${c.channel}</td><td>${c.status}</td><td>${c.sent_count}</td></tr>`).join("") || "<tr><td colspan=4>No campaigns yet.</td></tr>"}
+        </table>
+        ${m.latestSeoAudit ? `<h3>Latest SEO audit</h3><table><tr><td>${m.latestSeoAudit.base_url}</td><td>${m.latestSeoAudit.issues_found} issue(s)</td><td>${m.latestSeoAudit.run_at}</td></tr></table>` : ""}`;
+    }
+  }
+
+  // ===== Global search =====
+  const SEARCH_SELECT_FNS = {
+    lead: (id) => selectLead(id), quotation: (id) => selectQuotation(id), booking: (id) => selectBooking(id),
+    traveler: (id) => selectBooking(id), visa_case: (id) => selectVisaCase(id), invoice: (id) => selectInvoice(id),
+    supplier: (id) => selectVendor(id), employee: (id) => selectEmployee(id),
+  };
+  const SEARCH_CATEGORY_LABELS = {
+    customer: "Customers", lead: "Leads", quotation: "Quotations", booking: "Bookings", traveler: "Travelers",
+    visa_case: "Visa Cases", invoice: "Invoices", supplier: "Suppliers", employee: "Employees",
+  };
+
+  let searchDebounce = null;
+  $("#globalSearchInput").addEventListener("input", (e) => {
+    clearTimeout(searchDebounce);
+    const q = e.target.value.trim();
+    if (q.length < 2) { $("#globalSearchResults").hidden = true; return; }
+    searchDebounce = setTimeout(async () => {
+      const { results } = await api(`/api/search?q=${encodeURIComponent(q)}`);
+      const resultsEl = $("#globalSearchResults");
+      if (!results.length) {
+        resultsEl.innerHTML = `<div class="search-result-item muted">No matches for "${q}".</div>`;
+        resultsEl.hidden = false;
+        return;
+      }
+      const groups = {};
+      for (const r of results) (groups[r.category] ||= []).push(r);
+      resultsEl.innerHTML = Object.entries(groups).map(([cat, items]) => `
+        <div class="search-result-group">${SEARCH_CATEGORY_LABELS[cat] || cat}</div>
+        ${items.map(r => `
+          <div class="search-result-item" data-tab="${r.tab}" data-category="${r.category}" data-id="${r.id}">
+            <div class="card-title">${r.label}</div>
+            ${r.subtitle ? `<div class="card-sub">${r.subtitle}</div>` : ""}
+          </div>`).join("")}`).join("");
+      resultsEl.hidden = false;
+
+      $$(".search-result-item[data-id]", resultsEl).forEach(item => item.addEventListener("click", () => {
+        activateTab(item.dataset.tab);
+        const selectFn = SEARCH_SELECT_FNS[item.dataset.category];
+        if (selectFn) setTimeout(() => selectFn(Number(item.dataset.id)), 150);
+        resultsEl.hidden = true;
+        $("#globalSearchInput").value = "";
+      }));
+    }, 250);
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".global-search")) $("#globalSearchResults").hidden = true;
+  });
 
   // ===== AI Assistants (staff-facing, internal reporting) =====
   const STAFF_AI_AGENTS = [

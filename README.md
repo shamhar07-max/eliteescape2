@@ -164,3 +164,28 @@ before deploying — it defaults to local dev ports only.
       contacts, rates, performance, document upload/download/delete,
       expiring-documents query) and Playwright (Suppliers and Employees
       document UI, including a real file upload through the browser).
+- [x] **Phase 13 — Reporting/BI + global search**: `server/routes/reports.routes.js`
+      adds real, query-backed reports for every item in the master spec's
+      Reporting section — sales/lead conversion, booking + destination
+      performance (grounded in flight items' own destination field, not
+      parsed from free text), visa case stats and average days-to-complete,
+      receivables/payables/cash-collection/profitability/refund analysis,
+      supplier spend, marketing/Elite Reach attribution — plus an Owner
+      Command Center overview endpoint covering every metric in that
+      spec section. Each report is gated behind the same permission that
+      already protects its module (crm/ops/accounting/procurement/
+      marketing.read); nothing is fabricated or estimated outside what
+      the underlying tables actually contain. New **Reports / BI**
+      dashboard tab with stat tiles, dependency-free CSS bar charts, and
+      monthly trend tables.
+      `server/routes/search.routes.js` adds a global search
+      (`GET /api/search?q=`) across customers, leads, quotations,
+      bookings, travelers (including passport number), visa cases,
+      invoices, suppliers and employees — each category gated by its own
+      module's read permission so a search never surfaces a record the
+      caller couldn't otherwise open. A persistent search bar sits above
+      every tab; clicking a result switches tabs and opens that exact
+      record. Verified end-to-end via curl (all 7 report endpoints
+      against real seeded data, permission-scoped search results) and
+      Playwright (Reports/BI sub-tabs, search dropdown, and navigating
+      from a search hit straight into the matching supplier and invoice).

@@ -20,6 +20,8 @@ import { router as quotationsRoutes } from "./routes/quotations.routes.js";
 import { router as visaRoutes } from "./routes/visa.routes.js";
 import { router as refundsRoutes } from "./routes/refunds.routes.js";
 import { router as documentsRoutes } from "./routes/documents.routes.js";
+import { router as reportsRoutes } from "./routes/reports.routes.js";
+import { router as searchRoutes } from "./routes/search.routes.js";
 import { metricsMiddleware } from "./lib/metrics.js";
 
 // Grant every seeded role its module permissions. Owner/admin get everything;
@@ -70,6 +72,8 @@ app.use(quotationsRoutes);
 app.use(visaRoutes);
 app.use(refundsRoutes);
 app.use(documentsRoutes);
+app.use(reportsRoutes);
+app.use(searchRoutes);
 
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "web");
 app.use(express.static(webRoot));

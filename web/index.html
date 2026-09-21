@@ -18,6 +18,7 @@
       <button class="nav-btn" data-tab="visa">Visa Cases</button>
       <button class="nav-btn" data-tab="invoices">Invoices</button>
       <button class="nav-btn" data-tab="accounting">Accounting / GL</button>
+      <button class="nav-btn" data-tab="reports">Reports / BI</button>
       <button class="nav-btn" data-tab="notifications">Notifications <span class="badge" id="unreadBadge" hidden></span></button>
       <button class="nav-btn" data-tab="conversations">AI Conversations</button>
       <button class="nav-btn" data-tab="ai-assistants">AI Assistants</button>
@@ -42,6 +43,11 @@
   </aside>
 
   <main class="content">
+    <div class="global-search">
+      <input type="search" id="globalSearchInput" placeholder="Search customers, bookings, invoices, visa cases, suppliers, quotations, leads, employees…" autocomplete="off">
+      <div id="globalSearchResults" class="global-search-results" hidden></div>
+    </div>
+
     <section id="tab-leads" class="tab">
       <div class="tab-head">
         <h1>Leads</h1>
@@ -123,6 +129,20 @@
         <button class="btn-outline gl-subtab-btn" data-subtab="refunds">Refunds</button>
       </div>
       <div id="glSubtabContent"></div>
+    </section>
+
+    <section id="tab-reports" class="tab" hidden>
+      <div class="tab-head"><h1>Reports / BI</h1></div>
+      <div class="row" style="gap:8px;margin-bottom:16px;flex-wrap:wrap">
+        <button class="btn-outline report-subtab-btn active" data-subtab="overview">Owner Overview</button>
+        <button class="btn-outline report-subtab-btn" data-subtab="sales">Sales</button>
+        <button class="btn-outline report-subtab-btn" data-subtab="bookings">Bookings</button>
+        <button class="btn-outline report-subtab-btn" data-subtab="visa">Visa</button>
+        <button class="btn-outline report-subtab-btn" data-subtab="finance">Finance</button>
+        <button class="btn-outline report-subtab-btn" data-subtab="suppliers">Suppliers</button>
+        <button class="btn-outline report-subtab-btn" data-subtab="marketing">Marketing</button>
+      </div>
+      <div id="reportSubtabContent"></div>
     </section>
 
     <section id="tab-notifications" class="tab" hidden>
