@@ -47,6 +47,7 @@
     if (tab === "notifications") loadNotifications();
     if (tab === "conversations") loadConversations();
     if (tab === "ai-assistants") loadAiAssistants();
+    if (tab === "accounting") loadGlSubtab(currentGlSubtab);
     if (tab === "employees") loadEmployees();
     if (tab === "leave") loadLeaveRequests();
     if (tab === "payroll") loadPayrollRuns();
@@ -241,6 +242,22 @@
   // ===== Bookings =====
   let bookingsCache = [], selectedBookingId = null;
 
+  const SERVICE_DETAIL_FIELDS = {
+    flight: [["airline", "Airline"], ["flightNumber", "Flight #"], ["pnr", "PNR"], ["origin", "Origin"], ["destination", "Destination"], ["departureDate", "Depart (YYYY-MM-DD)"], ["returnDate", "Return (YYYY-MM-DD)"], ["cabinClass", "Cabin class"]],
+    hotel: [["hotelName", "Hotel name"], ["checkIn", "Check-in"], ["checkOut", "Check-out"], ["roomType", "Room type"], ["occupancy", "Occupancy"], ["mealPlan", "Meal plan"]],
+    transfer: [["pickupLocation", "Pickup location"], ["dropoffLocation", "Drop-off location"], ["vehicleType", "Vehicle type"], ["pickupDatetime", "Pickup date/time"]],
+    attraction: [["attractionName", "Attraction"], ["visitDate", "Visit date"], ["ticketType", "Ticket type"]],
+    insurance: [["insuranceProvider", "Provider"], ["policyNumber", "Policy #"], ["coverageStart", "Coverage start"], ["coverageEnd", "Coverage end"]],
+    visa: [["visaCountry", "Country"], ["visaType", "Visa type"]],
+    holiday: [], other: [],
+  };
+
+  function renderItemDetailFields(serviceType) {
+    const fields = SERVICE_DETAIL_FIELDS[serviceType] || [];
+    $("#itemDetailFields").innerHTML = fields.map(([key, label]) =>
+      `<input name="detail_${key}" placeholder="${label}" style="flex:1;min-width:140px">`).join("");
+  }
+
   async function loadBookings() {
     await loadCustomersIndex();
     bookingsCache = await api("/api/bookings");
@@ -260,6 +277,8 @@
     $$(".card", $("#bookingsList")).forEach(c => c.classList.toggle("selected", Number(c.dataset.id) === id));
     const booking = await api(`/api/bookings/${id}`);
     const itemsTotal = booking.items.reduce((s, i) => s + i.quantity * i.unit_price_aed, 0);
+    const profitability = booking.items.length ? await api(`/api/bookings/${id}/profitability`).catch(() => null) : null;
+    const travelerOptions = booking.travelers.map(t => `<option value="${t.id}">${t.full_name} (${t.traveler_type})</option>`).join("");
 
     $("#bookingDetail").innerHTML = `
       <h2>${customerName(booking.customer_id)}</h2>
@@ -270,20 +289,57 @@
       </div>
       <table>
         <tr><td>Travel dates</td><td>${booking.travel_date_start || "—"} to ${booking.travel_date_end || "—"}</td></tr>
-        <tr><td>Items total</td><td>AED ${itemsTotal.toFixed(2)}</td></tr>
+        <tr><td>Items total (sell)</td><td>AED ${itemsTotal.toFixed(2)}</td></tr>
+        ${profitability ? `
+        <tr><td>Supplier cost</td><td>AED ${profitability.totalCostAed.toFixed(2)}</td></tr>
+        <tr><td>Provisional profit</td><td>AED ${profitability.provisionalProfitAed.toFixed(2)}</td></tr>
+        <tr><td>Refunds paid</td><td>AED ${profitability.refundsAed.toFixed(2)}</td></tr>
+        <tr><td><b>Final profit</b></td><td><b>AED ${profitability.finalProfitAed.toFixed(2)}</b></td></tr>` : ""}
       </table>
-      <h3>Line items</h3>
+
+      <h3>Travelers</h3>
+      <div class="timeline">${booking.travelers.map(t => `
+        <div class="timeline-item">
+          ${t.full_name} — ${t.traveler_type}${t.nationality ? `, ${t.nationality}` : ""}${t.passport_number ? `, passport ${t.passport_number}` : ""}
+          <button class="btn-outline delete-traveler-btn" data-id="${t.id}" style="margin-left:8px;padding:2px 8px;">Remove</button>
+        </div>`).join("") || "<p class='muted'>No travelers added yet.</p>"}</div>
+      <form class="note-form" id="travelerForm" style="flex-wrap:wrap">
+        <input name="fullName" placeholder="Full name" required style="flex:1.2">
+        <select name="travelerType" style="flex:0.6">
+          <option value="adult">Adult</option><option value="child">Child</option><option value="infant">Infant</option>
+        </select>
+        <input name="nationality" placeholder="Nationality" style="flex:0.8">
+        <input name="passportNumber" placeholder="Passport #" style="flex:0.8">
+        <input name="passportExpiry" type="date" placeholder="Passport expiry" style="flex:0.8">
+        <button type="submit">Add traveler</button>
+      </form>
+
+      <h3>Typed travel services</h3>
       <div class="timeline">${booking.items.map(i => `
-        <div class="timeline-item">${i.description} — ${i.quantity} × AED ${i.unit_price_aed}</div>`).join("") || "<p class='muted'>No items yet.</p>"}</div>
-      <form class="note-form" id="itemForm">
-        <input name="description" placeholder="Item description" required style="flex:2">
-        <input name="quantity" type="number" step="0.5" value="1" placeholder="Qty" style="width:70px">
-        <input name="unitPriceAed" type="number" step="0.01" placeholder="AED" required style="width:100px">
-        <button type="submit">Add</button>
+        <div class="timeline-item">
+          <b>[${i.service_type}]</b> ${i.description} — ${i.quantity} × AED ${i.unit_price_aed} (cost AED ${i.supplier_cost_aed})
+          <span class="status-pill status-${i.service_status === "confirmed" ? "won" : i.service_status === "cancelled" ? "lost" : "new"}">${i.service_status}</span>
+          ${i.travelerIds.length ? `<div class="meta">Travelers: ${i.travelerIds.map(tid => booking.travelers.find(t => t.id === tid)?.full_name || tid).join(", ")}</div>` : ""}
+          ${i.details ? `<div class="meta">${Object.entries(i.details).filter(([k, v]) => v && k !== "booking_item_id").map(([k, v]) => `${k}: ${v}`).join(" · ")}</div>` : ""}
+        </div>`).join("") || "<p class='muted'>No services added yet.</p>"}</div>
+      <form class="note-form" id="itemForm" style="flex-wrap:wrap">
+        <select name="serviceType" id="itemServiceType" style="flex:0.7">
+          ${Object.keys(SERVICE_DETAIL_FIELDS).map(t => `<option value="${t}">${t}</option>`).join("")}
+        </select>
+        <input name="description" placeholder="Description" required style="flex:1.5">
+        <input name="quantity" type="number" step="0.5" value="1" placeholder="Qty" style="width:60px">
+        <input name="unitPriceAed" type="number" step="0.01" placeholder="Sell AED" required style="width:100px">
+        <input name="supplierCostAed" type="number" step="0.01" placeholder="Cost AED" style="width:100px">
+        <select name="travelerIds" multiple style="flex:1;min-height:32px">${travelerOptions}</select>
+        <div id="itemDetailFields" style="display:flex;flex-wrap:wrap;gap:6px;width:100%;"></div>
+        <button type="submit">Add service</button>
       </form>
       <div class="row" style="margin-top:16px">
         <button class="btn-outline" id="genInvoiceBtn"${booking.items.length ? "" : " disabled"}>Generate invoice</button>
       </div>`;
+
+    renderItemDetailFields($("#itemServiceType").value);
+    $("#itemServiceType").addEventListener("change", (e) => renderItemDetailFields(e.target.value));
 
     $$(".booking-status-btn", $("#bookingDetail")).forEach(btn => btn.addEventListener("click", async () => {
       await api(`/api/bookings/${id}/status`, { method: "PATCH", body: JSON.stringify({ status: btn.dataset.status }) });
@@ -291,10 +347,38 @@
       selectBooking(id);
     }));
 
+    $$(".delete-traveler-btn", $("#bookingDetail")).forEach(btn => btn.addEventListener("click", async () => {
+      await api(`/api/travelers/${btn.dataset.id}`, { method: "DELETE" });
+      selectBooking(id);
+    }));
+
+    $("#travelerForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      await api(`/api/bookings/${id}/travelers`, { method: "POST", body: JSON.stringify({
+        fullName: fd.get("fullName"), travelerType: fd.get("travelerType"),
+        nationality: fd.get("nationality") || undefined, passportNumber: fd.get("passportNumber") || undefined,
+        passportExpiry: fd.get("passportExpiry") || undefined,
+      }) });
+      selectBooking(id);
+    });
+
     $("#itemForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const fd = new FormData(e.target);
-      await api(`/api/bookings/${id}/items`, { method: "POST", body: JSON.stringify({ description: fd.get("description"), quantity: Number(fd.get("quantity")), unitPriceAed: Number(fd.get("unitPriceAed")) }) });
+      const serviceType = fd.get("serviceType");
+      const details = {};
+      for (const [key] of (SERVICE_DETAIL_FIELDS[serviceType] || [])) {
+        const v = fd.get(`detail_${key}`);
+        if (v) details[key] = v;
+      }
+      const travelerIds = [...$("select[name=travelerIds]", e.target).selectedOptions].map(o => Number(o.value));
+      await api(`/api/bookings/${id}/items`, { method: "POST", body: JSON.stringify({
+        serviceType, description: fd.get("description"), quantity: Number(fd.get("quantity")),
+        unitPriceAed: Number(fd.get("unitPriceAed")), supplierCostAed: Number(fd.get("supplierCostAed") || 0),
+        details: Object.keys(details).length ? details : undefined,
+        travelerIds: travelerIds.length ? travelerIds : undefined,
+      }) });
       selectBooking(id);
     });
 
@@ -513,6 +597,116 @@
           <b>${m.role === "user" ? "Customer" : m.role === "assistant" ? "AI" : m.role}:</b> ${m.content}
           <div class="meta">${timeAgo(m.created_at)}</div>
         </div>`).join("") || "<p class='muted'>No messages yet.</p>"}</div>`;
+  }
+
+  // ===== Accounting / General Ledger =====
+  let currentGlSubtab = "trial-balance";
+
+  $$(".gl-subtab-btn").forEach(btn => btn.addEventListener("click", () => {
+    $$(".gl-subtab-btn").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    currentGlSubtab = btn.dataset.subtab;
+    loadGlSubtab(currentGlSubtab);
+  }));
+
+  async function loadGlSubtab(subtab) {
+    const el = $("#glSubtabContent");
+    if (subtab === "trial-balance") {
+      const tb = await api("/api/gl/trial-balance");
+      el.innerHTML = `
+        <p class="muted">As of: ${tb.asOf} — ${tb.balanced ? "✓ balanced" : "⚠ NOT BALANCED"}</p>
+        <table class="wide-table"><tr><th>Code</th><th>Account</th><th>Type</th><th>Balance (AED)</th></tr>
+        ${tb.accounts.map(a => `<tr><td>${a.code}</td><td>${a.name}</td><td>${a.type}</td><td>${a.balanceAed.toFixed(2)}</td></tr>`).join("")}
+        </table>`;
+    } else if (subtab === "pl") {
+      const pl = await api("/api/gl/profit-and-loss");
+      el.innerHTML = `
+        <h3>Revenue</h3>
+        <table class="wide-table">${pl.revenue.map(r => `<tr><td>${r.code}</td><td>${r.name}</td><td>${r.amountAed.toFixed(2)}</td></tr>`).join("")}</table>
+        <h3>Expenses</h3>
+        <table class="wide-table">${pl.expenses.map(r => `<tr><td>${r.code}</td><td>${r.name}</td><td>${r.amountAed.toFixed(2)}</td></tr>`).join("")}</table>
+        <table style="margin-top:12px">
+          <tr><td>Total revenue</td><td>AED ${pl.totalRevenueAed.toFixed(2)}</td></tr>
+          <tr><td>Total expenses</td><td>AED ${pl.totalExpensesAed.toFixed(2)}</td></tr>
+          <tr><td><b>Net profit</b></td><td><b>AED ${pl.netProfitAed.toFixed(2)}</b></td></tr>
+        </table>`;
+    } else if (subtab === "balance-sheet") {
+      const bs = await api("/api/gl/balance-sheet");
+      el.innerHTML = `
+        <p class="muted">As of: ${bs.asOf} — ${bs.balanced ? "✓ balanced" : "⚠ NOT BALANCED"}</p>
+        <h3>Assets</h3>
+        <table class="wide-table">${bs.assets.map(a => `<tr><td>${a.code}</td><td>${a.name}</td><td>${a.balanceAed.toFixed(2)}</td></tr>`).join("")}</table>
+        <h3>Liabilities</h3>
+        <table class="wide-table">${bs.liabilities.map(a => `<tr><td>${a.code}</td><td>${a.name}</td><td>${a.balanceAed.toFixed(2)}</td></tr>`).join("")}</table>
+        <h3>Equity</h3>
+        <table class="wide-table">${bs.equity.map(a => `<tr><td>${a.code}</td><td>${a.name}</td><td>${a.balanceAed.toFixed(2)}</td></tr>`).join("")}
+        <tr><td colspan="2">Current period earnings</td><td>${bs.currentPeriodEarningsAed.toFixed(2)}</td></tr></table>
+        <table style="margin-top:12px">
+          <tr><td>Total assets</td><td>AED ${bs.totalAssetsAed.toFixed(2)}</td></tr>
+          <tr><td>Total liabilities + equity</td><td>AED ${(bs.totalLiabilitiesAed + bs.totalEquityAed).toFixed(2)}</td></tr>
+        </table>`;
+    } else if (subtab === "journal") {
+      const entries = await api("/api/gl/journal-entries");
+      el.innerHTML = `<div class="split">
+        <div class="list" id="journalList">${entries.map(e => `
+          <div class="card" data-id="${e.id}">
+            <div class="card-top"><span class="card-title">${e.entry_number}</span><span class="status-pill status-new">${e.source_type || "manual"}</span></div>
+            <div class="card-sub">${e.entry_date} — ${e.memo || ""}</div>
+          </div>`).join("") || "<p class='muted'>No journal entries yet.</p>"}</div>
+        <div class="detail" id="journalDetail"><p class="muted">Select an entry to view its lines.</p></div>
+      </div>`;
+      $$(".card[data-id]", $("#journalList")).forEach(card => card.addEventListener("click", async () => {
+        $$(".card", $("#journalList")).forEach(c => c.classList.toggle("selected", c === card));
+        const entry = await api(`/api/gl/journal-entries/${card.dataset.id}`);
+        $("#journalDetail").innerHTML = `
+          <h2>${entry.entry_number}</h2>
+          <p class="muted">${entry.entry_date} — ${entry.memo || ""}</p>
+          <table class="wide-table"><tr><th>Account</th><th>Debit</th><th>Credit</th></tr>
+          ${entry.lines.map(l => `<tr><td>${l.code} ${l.account_name}</td><td>${l.debitAed ? l.debitAed.toFixed(2) : ""}</td><td>${l.creditAed ? l.creditAed.toFixed(2) : ""}</td></tr>`).join("")}
+          </table>`;
+      }));
+    } else if (subtab === "refunds") {
+      const refunds = await api("/api/refunds");
+      el.innerHTML = `
+        <form class="note-form" id="refundForm" style="flex-wrap:wrap">
+          <select name="refundType" style="flex:0.6"><option value="customer">Customer</option><option value="supplier">Supplier</option></select>
+          <input name="bookingId" type="number" placeholder="Booking ID" style="width:110px">
+          <input name="invoiceId" type="number" placeholder="Invoice ID" style="width:110px">
+          <input name="purchaseOrderId" type="number" placeholder="PO ID" style="width:90px">
+          <input name="amountAed" type="number" step="0.01" placeholder="Amount AED" required style="width:110px">
+          <input name="reason" placeholder="Reason" required style="flex:1.5">
+          <button type="submit">Create refund</button>
+        </form>
+        <div class="list wide" style="margin-top:12px">${refunds.map(r => `
+          <div class="card">
+            <div class="card-top"><span class="card-title">${r.refund_number} — ${r.refund_type}</span><span class="status-pill status-${r.status === "paid" ? "won" : r.status === "cancelled" ? "lost" : "new"}">${r.status}</span></div>
+            <div class="card-sub">AED ${r.amount_aed.toFixed(2)} — ${r.reason}</div>
+            <div class="row" style="margin-top:6px">
+              ${r.status === "draft" ? `<button class="btn-outline refund-status-btn" data-id="${r.id}" data-status="approved">Approve</button>` : ""}
+              ${r.status === "approved" ? `<button class="btn-outline refund-status-btn" data-id="${r.id}" data-status="paid">Mark paid</button>` : ""}
+              ${["draft", "approved"].includes(r.status) ? `<button class="btn-outline refund-status-btn" data-id="${r.id}" data-status="cancelled">Cancel</button>` : ""}
+            </div>
+          </div>`).join("") || "<p class='muted'>No refunds yet.</p>"}</div>`;
+
+      $("#refundForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        try {
+          await api("/api/refunds", { method: "POST", body: JSON.stringify({
+            refundType: fd.get("refundType"),
+            bookingId: fd.get("bookingId") ? Number(fd.get("bookingId")) : undefined,
+            invoiceId: fd.get("invoiceId") ? Number(fd.get("invoiceId")) : undefined,
+            purchaseOrderId: fd.get("purchaseOrderId") ? Number(fd.get("purchaseOrderId")) : undefined,
+            amountAed: Number(fd.get("amountAed")), reason: fd.get("reason"),
+          }) });
+          loadGlSubtab("refunds");
+        } catch (err) { alert(err.message); }
+      });
+      $$(".refund-status-btn", el).forEach(btn => btn.addEventListener("click", async () => {
+        await api(`/api/refunds/${btn.dataset.id}/status`, { method: "PATCH", body: JSON.stringify({ status: btn.dataset.status }) });
+        loadGlSubtab("refunds");
+      }));
+    }
   }
 
   // ===== AI Assistants (staff-facing, internal reporting) =====

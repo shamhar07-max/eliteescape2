@@ -107,3 +107,29 @@ before deploying — it defaults to local dev ports only.
       an **AI Assistants** dashboard tab with one card per assistant.
       Runs on the same `mock`/`anthropic` provider switch as Phase 4;
       mock mode is genuinely functional today via `mockStaffReply`.
+- [x] **Phase 11 — Typed travel services + double-entry accounting**:
+      `booking_items` gains a `service_type` (flight/hotel/transfer/
+      attraction/insurance/visa/holiday/other), a supplier + supplier cost,
+      and a service-confirmation status, plus a sparse `booking_item_details`
+      table holding each type's own fields (PNR/cabin class for flights,
+      room type/meal plan for hotels, etc.) and a `travelers` table (name,
+      DOB, passport, nationality, special assistance) linked to the
+      services they're on — the master spec's Traveler Management +
+      typed Flight/Hotel/Transfer/Attraction/Insurance Operations sections.
+      Alongside it, a real deterministic double-entry GL
+      (`server/lib/gl.js`): a seeded chart of accounts, balanced journal
+      entries idempotent on `(source_type, source_id)` so re-firing an
+      event never double-posts, and auto-posting hooked into every money
+      event that already existed — invoice sent, payment received, PO
+      received/paid, payroll disbursed — plus a new supplier/customer
+      refunds module. New `/api/gl/*` reporting endpoints (trial balance,
+      P&L, balance sheet, journal drill-down) and a per-booking
+      profitability endpoint (sell − supplier cost − paid refunds, per
+      the spec's Provisional/Final Profit formula). Nothing in
+      `server/lib/ai/` imports the GL module — the AI workforce has no
+      path to alter a ledger entry, per the master spec's AI Security
+      principle. New **Accounting / GL** dashboard tab; the Bookings tab
+      gains traveler management and a typed-service form with per-type
+      detail fields. Verified end-to-end via curl (full lifecycle: typed
+      booking → invoice → payment → PO → payroll → refund → all four GL
+      reports, confirmed balanced) and Playwright (both new UI surfaces).

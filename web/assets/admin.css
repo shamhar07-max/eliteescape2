@@ -62,6 +62,13 @@ a,button{font-family:inherit}
 .detail table td{padding:6px 0;border-bottom:1px solid var(--line)}
 .detail table td:first-child{color:var(--muted);width:120px}
 
+#glSubtabContent{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px}
+#glSubtabContent h3{margin:18px 0 8px;font-size:15px}
+#glSubtabContent h3:first-child{margin-top:0}
+#glSubtabContent table{width:100%;border-collapse:collapse;margin:6px 0 14px;font-size:13.5px}
+#glSubtabContent table td{padding:6px 8px;border-bottom:1px solid var(--line)}
+table.wide-table th{text-align:left;color:var(--muted);font-weight:600;padding:6px 8px;border-bottom:2px solid var(--line)}
+
 .btn-outline{background:#fff;border:1.5px solid var(--line);color:var(--navy);padding:7px 14px;border-radius:8px;font-size:13px;cursor:pointer;font-weight:600}
 .btn-outline:hover{border-color:var(--ink)}
 .btn-outline.active{background:var(--ink);color:#fff;border-color:var(--ink)}

@@ -17,6 +17,7 @@
       <button class="nav-btn" data-tab="bookings">Bookings</button>
       <button class="nav-btn" data-tab="visa">Visa Cases</button>
       <button class="nav-btn" data-tab="invoices">Invoices</button>
+      <button class="nav-btn" data-tab="accounting">Accounting / GL</button>
       <button class="nav-btn" data-tab="notifications">Notifications <span class="badge" id="unreadBadge" hidden></span></button>
       <button class="nav-btn" data-tab="conversations">AI Conversations</button>
       <button class="nav-btn" data-tab="ai-assistants">AI Assistants</button>
@@ -110,6 +111,18 @@
         <div class="list" id="invoicesList"></div>
         <div class="detail" id="invoiceDetail"><p class="muted">Select an invoice to view details.</p></div>
       </div>
+    </section>
+
+    <section id="tab-accounting" class="tab" hidden>
+      <div class="tab-head"><h1>Accounting / General Ledger</h1></div>
+      <div class="row" style="gap:8px;margin-bottom:16px;">
+        <button class="btn-outline gl-subtab-btn active" data-subtab="trial-balance">Trial Balance</button>
+        <button class="btn-outline gl-subtab-btn" data-subtab="pl">Profit &amp; Loss</button>
+        <button class="btn-outline gl-subtab-btn" data-subtab="balance-sheet">Balance Sheet</button>
+        <button class="btn-outline gl-subtab-btn" data-subtab="journal">Journal Entries</button>
+        <button class="btn-outline gl-subtab-btn" data-subtab="refunds">Refunds</button>
+      </div>
+      <div id="glSubtabContent"></div>
     </section>
 
     <section id="tab-notifications" class="tab" hidden>

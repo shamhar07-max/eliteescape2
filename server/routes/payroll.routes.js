@@ -4,6 +4,7 @@ import { db } from "../db.js";
 import { auth } from "../middleware/auth.js";
 import { notifyRole } from "../lib/notify.js";
 import { toFils, toAed } from "../lib/money.js";
+import { postJournalEntry, ACCOUNTS } from "../lib/gl.js";
 
 export const router = Router();
 
@@ -107,6 +108,19 @@ router.patch("/api/payroll-runs/:id/pay", auth(["accounting.write"]), async (req
   const totalNetAed = toAed(totalNetFils);
   db.prepare("INSERT INTO audit_log (actor_user_id, action, entity_type, entity_id, detail) VALUES (?, 'pay', 'payroll_run', ?, ?)")
     .run(req.user.id, req.params.id, `AED ${totalNetAed} disbursed`);
+
+  if (totalNetFils > 0) {
+    postJournalEntry({
+      memo: `Payroll disbursed: ${run.period_year}-${String(run.period_month).padStart(2, "0")}`,
+      sourceType: "payroll_run",
+      sourceId: Number(req.params.id),
+      userId: req.user.id,
+      lines: [
+        { accountCode: ACCOUNTS.SALARY_EXPENSE, debitFils: totalNetFils },
+        { accountCode: ACCOUNTS.BANK, creditFils: totalNetFils },
+      ],
+    });
+  }
 
   await notifyRole(["owner", "admin"], {
     type: "system",

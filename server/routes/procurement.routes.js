@@ -5,6 +5,7 @@ import { auth } from "../middleware/auth.js";
 import { nextPoNumber } from "../lib/poNumber.js";
 import { notifyRole } from "../lib/notify.js";
 import { toFils, toAed } from "../lib/money.js";
+import { postJournalEntry, ACCOUNTS } from "../lib/gl.js";
 
 export const router = Router();
 
@@ -93,12 +94,49 @@ const poStatusSchema = z.object({ status: z.enum(["draft", "approved", "received
 router.patch("/api/purchase-orders/:id/status", auth(["procurement.write"]), (req, res) => {
   const parsed = poStatusSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "invalid status" });
-  const po = db.prepare("SELECT id FROM purchase_orders WHERE id = ?").get(req.params.id);
+  const po = db.prepare(`
+    SELECT po.*, v.name AS vendor_name FROM purchase_orders po
+    JOIN vendors v ON v.id = po.vendor_id WHERE po.id = ?
+  `).get(req.params.id);
   if (!po) return res.status(404).json({ error: "purchase order not found" });
+  if (parsed.data.status === "received" && po.status !== "approved") {
+    return res.status(409).json({ error: "only an approved purchase order can be marked received" });
+  }
+  if (parsed.data.status === "paid" && po.status !== "received") {
+    return res.status(409).json({ error: "only a received purchase order can be marked paid" });
+  }
 
   const approvedByClause = parsed.data.status === "approved" ? ", approved_by_user_id = ?" : "";
   const params = parsed.data.status === "approved" ? [parsed.data.status, req.user.id, req.params.id] : [parsed.data.status, req.params.id];
   db.prepare(`UPDATE purchase_orders SET status = ?${approvedByClause}, updated_at = datetime('now') WHERE id = ?`).run(...params);
+
+  // 'received' books the supplier's bill as a payable; 'paid' clears it —
+  // distinct source_type strings so both post exactly once against the
+  // same PO id.
+  if (parsed.data.status === "received") {
+    postJournalEntry({
+      memo: `Bill received: ${po.po_number} — ${po.vendor_name}`,
+      sourceType: "purchase_order_received",
+      sourceId: po.id,
+      userId: req.user.id,
+      lines: [
+        { accountCode: ACCOUNTS.SUPPLIER_COST, debitFils: po.amount_aed_fils, description: po.po_number },
+        { accountCode: ACCOUNTS.ACCOUNTS_PAYABLE, creditFils: po.amount_aed_fils, description: po.po_number },
+      ],
+    });
+  }
+  if (parsed.data.status === "paid") {
+    postJournalEntry({
+      memo: `Bill paid: ${po.po_number} — ${po.vendor_name}`,
+      sourceType: "purchase_order_paid",
+      sourceId: po.id,
+      userId: req.user.id,
+      lines: [
+        { accountCode: ACCOUNTS.ACCOUNTS_PAYABLE, debitFils: po.amount_aed_fils, description: po.po_number },
+        { accountCode: ACCOUNTS.BANK, creditFils: po.amount_aed_fils, description: po.po_number },
+      ],
+    });
+  }
 
   res.json({ id: Number(req.params.id), status: parsed.data.status });
 });

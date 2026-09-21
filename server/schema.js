@@ -425,6 +425,96 @@ CREATE TABLE IF NOT EXISTS seo_content_items (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- ===== Typed travel services + travelers (Phase 10) =====
+-- booking_items itself gains service_type/supplier/cost/status columns via
+-- migrations/003 (it already exists on live DBs, so CREATE TABLE IF NOT
+-- EXISTS above is a no-op there — see the money-to-fils migration's own
+-- note on this same limitation).
+CREATE TABLE IF NOT EXISTS travelers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  booking_id INTEGER NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+  full_name TEXT NOT NULL,
+  traveler_type TEXT NOT NULL DEFAULT 'adult', -- 'adult', 'child', 'infant'
+  date_of_birth TEXT,
+  gender TEXT,
+  nationality TEXT,
+  passport_number TEXT,
+  passport_expiry TEXT,
+  visa_status TEXT,
+  special_assistance TEXT,
+  dietary_needs TEXT,
+  emergency_contact TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS booking_item_travelers (
+  booking_item_id INTEGER NOT NULL REFERENCES booking_items(id) ON DELETE CASCADE,
+  traveler_id INTEGER NOT NULL REFERENCES travelers(id) ON DELETE CASCADE,
+  PRIMARY KEY (booking_item_id, traveler_id)
+);
+
+-- One row per booking_item, sparse — only the columns for that item's own
+-- service_type are ever populated. A wide nullable table beats 6 near-empty
+-- per-type tables for a single-tenant SQLite app this size.
+CREATE TABLE IF NOT EXISTS booking_item_details (
+  booking_item_id INTEGER PRIMARY KEY REFERENCES booking_items(id) ON DELETE CASCADE,
+  airline TEXT, flight_number TEXT, pnr TEXT, origin TEXT, destination TEXT,
+  departure_date TEXT, return_date TEXT, cabin_class TEXT,
+  hotel_name TEXT, check_in TEXT, check_out TEXT, room_type TEXT, occupancy TEXT, meal_plan TEXT,
+  pickup_location TEXT, dropoff_location TEXT, vehicle_type TEXT, pickup_datetime TEXT,
+  attraction_name TEXT, visit_date TEXT, ticket_type TEXT,
+  insurance_provider TEXT, policy_number TEXT, coverage_start TEXT, coverage_end TEXT,
+  visa_country TEXT, visa_type TEXT
+);
+
+-- ===== Double-entry accounting / general ledger (Phase 10) =====
+CREATE TABLE IF NOT EXISTS chart_of_accounts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,             -- 'asset', 'liability', 'equity', 'revenue', 'expense'
+  normal_balance TEXT NOT NULL,   -- 'debit' or 'credit' — which side increases this account
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS journal_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  entry_number TEXT UNIQUE NOT NULL,   -- 'JE-2026-0001' — sequential, gap-free
+  entry_date TEXT NOT NULL DEFAULT (date('now')),
+  memo TEXT,
+  source_type TEXT,               -- 'invoice', 'payment', 'purchase_order', 'payslip', 'refund', 'manual'
+  source_id INTEGER,               -- id of the row in source_type's table, for idempotent posting
+  status TEXT NOT NULL DEFAULT 'posted', -- 'posted', 'void'
+  created_by_user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS journal_lines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  journal_entry_id INTEGER NOT NULL REFERENCES journal_entries(id) ON DELETE CASCADE,
+  account_id INTEGER NOT NULL REFERENCES chart_of_accounts(id),
+  debit_aed_fils INTEGER NOT NULL DEFAULT 0,
+  credit_aed_fils INTEGER NOT NULL DEFAULT 0,
+  description TEXT
+);
+
+CREATE TABLE IF NOT EXISTS refunds (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  refund_number TEXT UNIQUE NOT NULL,   -- 'REF-2026-0001'
+  refund_type TEXT NOT NULL,            -- 'customer', 'supplier'
+  booking_id INTEGER REFERENCES bookings(id),
+  invoice_id INTEGER REFERENCES invoices(id),
+  purchase_order_id INTEGER REFERENCES purchase_orders(id),
+  amount_aed_fils INTEGER NOT NULL,
+  reason TEXT,
+  status TEXT NOT NULL DEFAULT 'draft', -- 'draft', 'approved', 'paid', 'cancelled'
+  requested_by_user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
 CREATE INDEX IF NOT EXISTS idx_leads_owner ON leads(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_lead_activities_lead ON lead_activities(lead_id);
@@ -461,6 +551,14 @@ CREATE INDEX IF NOT EXISTS idx_visa_applicants_case ON visa_applicants(visa_case
 CREATE INDEX IF NOT EXISTS idx_visa_documents_case ON visa_documents(visa_case_id);
 CREATE INDEX IF NOT EXISTS idx_visa_documents_applicant ON visa_documents(applicant_id);
 CREATE INDEX IF NOT EXISTS idx_visa_status_history_case ON visa_case_status_history(visa_case_id);
+CREATE INDEX IF NOT EXISTS idx_travelers_booking ON travelers(booking_id);
+CREATE INDEX IF NOT EXISTS idx_booking_item_travelers_traveler ON booking_item_travelers(traveler_id);
+CREATE INDEX IF NOT EXISTS idx_journal_entries_source ON journal_entries(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_journal_entries_date ON journal_entries(entry_date);
+CREATE INDEX IF NOT EXISTS idx_journal_lines_entry ON journal_lines(journal_entry_id);
+CREATE INDEX IF NOT EXISTS idx_journal_lines_account ON journal_lines(account_id);
+CREATE INDEX IF NOT EXISTS idx_refunds_booking ON refunds(booking_id);
+CREATE INDEX IF NOT EXISTS idx_refunds_status ON refunds(status);
 `;
 
 export const SEED_ROLES = [

@@ -175,8 +175,13 @@ router.post("/api/quotations/:id/accept", auth(["crm.write"]), (req, res) => {
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(quotation.customer_id, quotation.lead_id, quotation.id, primaryType, `From quotation ${quotation.quotation_number}`, req.user.id);
 
-  const insertBookingItem = db.prepare("INSERT INTO booking_items (booking_id, description, quantity, unit_price_aed_fils) VALUES (?, ?, ?, ?)");
-  for (const i of items) insertBookingItem.run(bookingResult.lastInsertRowid, i.description, i.quantity, i.unit_price_aed_fils);
+  // Carries the quotation's own service_type/unit_cost straight onto the
+  // booking's typed line items — the accepted quote is the single source of
+  // truth for what was sold and at what supplier cost, never re-typed.
+  const insertBookingItem = db.prepare(
+    "INSERT INTO booking_items (booking_id, description, quantity, unit_price_aed_fils, service_type, supplier_cost_aed_fils) VALUES (?, ?, ?, ?, ?, ?)"
+  );
+  for (const i of items) insertBookingItem.run(bookingResult.lastInsertRowid, i.description, i.quantity, i.unit_price_aed_fils, i.service_type, i.unit_cost_aed_fils);
 
   db.prepare("UPDATE quotations SET status = 'accepted', updated_at = datetime('now') WHERE id = ?").run(quotation.id);
 
