@@ -3,8 +3,10 @@ import { z } from "zod";
 import { db } from "../db.js";
 import { auth } from "../middleware/auth.js";
 import { rateLimit } from "../lib/rateLimit.js";
-import { getReply } from "../lib/ai/provider.js";
+import { getReply, isStaffAgent } from "../lib/ai/provider.js";
 import { AGENTS } from "../lib/ai/agents.js";
+
+const STAFF_AGENT_TYPES = ["visa_assistant", "sales_assistant", "operations_assistant", "finance_assistant", "marketing_assistant", "executive_assistant"];
 
 export const router = Router();
 
@@ -106,4 +108,50 @@ router.get("/api/conversations/:id/messages", auth(["crm.read"]), (req, res) => 
 
 router.get("/api/ai/agents", auth(), (req, res) => {
   res.json(Object.entries(AGENTS).map(([key, a]) => ({ key, label: a.label })));
+});
+
+// ===== Staff AI assistants (authenticated, internal-data only) =====
+const staffChatSchema = z.object({
+  conversationId: z.number().int().optional(),
+  agentType: z.enum(STAFF_AGENT_TYPES),
+  message: z.string().min(1).max(2000).optional(),
+});
+
+router.post("/api/ai/staff-chat", auth(), async (req, res) => {
+  const parsed = staffChatSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0].message });
+  const d = parsed.data;
+  if (!isStaffAgent(d.agentType)) return res.status(400).json({ error: "not a staff assistant type" });
+
+  let conversation;
+  if (d.conversationId) {
+    conversation = db.prepare("SELECT * FROM conversations WHERE id = ? AND agent_type = ?").get(d.conversationId, d.agentType);
+    if (!conversation) return res.status(404).json({ error: "conversation not found" });
+  } else {
+    const result = db.prepare("INSERT INTO conversations (customer_id, agent_type, channel) VALUES (NULL, ?, 'staff_console')").run(d.agentType);
+    conversation = { id: Number(result.lastInsertRowid), customer_id: null, agent_type: d.agentType, status: "open" };
+  }
+
+  db.prepare("INSERT INTO messages (conversation_id, role, content) VALUES (?, 'user', ?)").run(conversation.id, d.message || `[${req.user.fullName} requested a briefing]`);
+
+  const ctx = { conversationId: conversation.id, customerId: null, agentType: conversation.agent_type, staffUserId: req.user.id };
+  let reply;
+  try {
+    reply = await getReply(conversation.agent_type, [], ctx);
+  } catch (err) {
+    console.error("[ai] staff provider error:", err.message);
+    return res.status(503).json({ error: "AI assistant temporarily unavailable" });
+  }
+
+  db.prepare("INSERT INTO messages (conversation_id, role, content) VALUES (?, 'assistant', ?)").run(conversation.id, reply.text);
+  db.prepare("UPDATE conversations SET updated_at = datetime('now') WHERE id = ?").run(conversation.id);
+
+  res.json({ conversationId: conversation.id, agentType: conversation.agent_type, reply: reply.text });
+});
+
+router.get("/api/ai/staff-chat/:conversationId/messages", auth(), (req, res) => {
+  const convo = db.prepare("SELECT id, agent_type FROM conversations WHERE id = ? AND channel = 'staff_console'").get(req.params.conversationId);
+  if (!convo) return res.status(404).json({ error: "conversation not found" });
+  const rows = db.prepare("SELECT role, content, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC").all(req.params.conversationId);
+  res.json(rows);
 });

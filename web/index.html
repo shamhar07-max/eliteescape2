@@ -19,6 +19,7 @@
       <button class="nav-btn" data-tab="invoices">Invoices</button>
       <button class="nav-btn" data-tab="notifications">Notifications <span class="badge" id="unreadBadge" hidden></span></button>
       <button class="nav-btn" data-tab="conversations">AI Conversations</button>
+      <button class="nav-btn" data-tab="ai-assistants">AI Assistants</button>
       <button class="nav-btn" data-tab="employees">Employees</button>
       <button class="nav-btn" data-tab="leave">Leave Requests</button>
       <button class="nav-btn" data-tab="payroll">Payroll</button>
@@ -125,6 +126,12 @@
         <div class="list" id="conversationsList"></div>
         <div class="detail" id="conversationDetail"><p class="muted">Select a conversation to view the thread.</p></div>
       </div>
+    </section>
+
+    <section id="tab-ai-assistants" class="tab" hidden>
+      <div class="tab-head"><h1>AI Assistants</h1></div>
+      <p class="muted">Internal reporting agents — read-only, real data, never contact a customer or change a record themselves.</p>
+      <div class="grid" id="aiAssistantsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px;margin-top:12px;"></div>
     </section>
 
     <section id="tab-employees" class="tab" hidden>

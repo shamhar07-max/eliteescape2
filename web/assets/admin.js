@@ -46,6 +46,7 @@
     if (tab === "invoices") loadInvoices();
     if (tab === "notifications") loadNotifications();
     if (tab === "conversations") loadConversations();
+    if (tab === "ai-assistants") loadAiAssistants();
     if (tab === "employees") loadEmployees();
     if (tab === "leave") loadLeaveRequests();
     if (tab === "payroll") loadPayrollRuns();
@@ -512,6 +513,43 @@
           <b>${m.role === "user" ? "Customer" : m.role === "assistant" ? "AI" : m.role}:</b> ${m.content}
           <div class="meta">${timeAgo(m.created_at)}</div>
         </div>`).join("") || "<p class='muted'>No messages yet.</p>"}</div>`;
+  }
+
+  // ===== AI Assistants (staff-facing, internal reporting) =====
+  const STAFF_AI_AGENTS = [
+    { key: "visa_assistant", label: "AI Visa Assistant", hint: "Open visa cases missing documents or gone quiet" },
+    { key: "sales_assistant", label: "AI Sales Assistant", hint: "Pipeline by status + stale leads" },
+    { key: "operations_assistant", label: "AI Operations Assistant", hint: "Upcoming departures + stalled draft bookings" },
+    { key: "finance_assistant", label: "AI Finance Assistant", hint: "Overdue invoices + drafts" },
+    { key: "marketing_assistant", label: "AI Marketing Assistant", hint: "Campaign performance + latest SEO audit" },
+    { key: "executive_assistant", label: "AI Executive Assistant", hint: "Owner daily brief" },
+  ];
+
+  function loadAiAssistants() {
+    $("#aiAssistantsGrid").innerHTML = STAFF_AI_AGENTS.map(a => `
+      <div class="card" data-agent="${a.key}">
+        <div class="card-top"><span class="card-title">${a.label}</span></div>
+        <div class="card-sub">${a.hint}</div>
+        <button class="btn ask-ai-btn" data-agent="${a.key}" style="margin-top:8px;">Ask</button>
+        <div class="ai-reply muted" style="margin-top:8px;white-space:pre-wrap;"></div>
+      </div>`).join("");
+    $$(".ask-ai-btn", $("#aiAssistantsGrid")).forEach(btn => btn.addEventListener("click", () => askAiAssistant(btn.dataset.agent)));
+  }
+
+  async function askAiAssistant(agentType) {
+    const card = $(`.card[data-agent="${agentType}"]`, $("#aiAssistantsGrid"));
+    const replyEl = $(".ai-reply", card);
+    const btn = $(".ask-ai-btn", card);
+    btn.disabled = true;
+    replyEl.textContent = "Thinking…";
+    try {
+      const res = await api("/api/ai/staff-chat", { method: "POST", body: JSON.stringify({ agentType }) });
+      replyEl.textContent = res.reply;
+    } catch (err) {
+      replyEl.textContent = `Error: ${err.message}`;
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   // ===== Employees =====

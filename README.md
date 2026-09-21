@@ -94,3 +94,16 @@ before deploying — it defaults to local dev ports only.
       `docs/ELITE_ESCAPE_GAP_ANALYSIS.md` §6 — every AED column moved from
       floating-point to integer fils, with a lossless migration for
       existing data
+- [x] **Phase 10 — Full AI workforce**: 6 new staff-facing AI assistants
+      (Visa, Sales, Operations, Finance, Marketing, Executive) alongside
+      the existing customer-facing Receptionist/Travel Consultant. Unlike
+      the customer agents, every staff assistant's tools are strictly
+      read-only (`AGENT_TOOL_NAMES` in `server/lib/ai/tools.js`) — they
+      summarize real CRM/ops/finance/marketing data for a human to act on
+      and never post a ledger entry, change a status, or contact a
+      customer themselves, per the master spec's AI Security principle.
+      New authenticated `POST /api/ai/staff-chat` endpoint (any logged-in
+      staff member — no separate `ai.*` permission gate exists yet) plus
+      an **AI Assistants** dashboard tab with one card per assistant.
+      Runs on the same `mock`/`anthropic` provider switch as Phase 4;
+      mock mode is genuinely functional today via `mockStaffReply`.

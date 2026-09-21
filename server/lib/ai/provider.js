@@ -1,14 +1,15 @@
 import { AGENTS } from "./agents.js";
-import { TOOL_DEFINITIONS, runTool } from "./tools.js";
+import { TOOL_DEFINITIONS, AGENT_TOOL_NAMES, runTool } from "./tools.js";
 
 const AI_PROVIDER = process.env.AI_PROVIDER || "mock";
+const STAFF_AGENT_TYPES = ["visa_assistant", "sales_assistant", "operations_assistant", "finance_assistant", "marketing_assistant", "executive_assistant"];
 
 /* ---------- mock provider — real logic, zero external dependency ----------
  * Deterministic intent-matching against the same tool contract a real LLM
  * uses, so the conversation is genuinely useful today and the swap to
  * AI_PROVIDER=anthropic later changes nothing about what the agent can do,
  * only how well it understands free-form phrasing. */
-const mockReply = async (agentType, history, ctx) => {
+const mockCustomerReply = async (agentType, history, ctx) => {
   const lastUser = [...history].reverse().find(m => m.role === "user")?.content || "";
   const s = lastUser.toLowerCase();
   const toolResults = [];
@@ -62,6 +63,72 @@ const mockReply = async (agentType, history, ctx) => {
   return { text: "Tell me a bit more — a destination, a visa country, or an attraction — and I'll take it from there.", toolResults };
 };
 
+/* Staff assistants don't hold a conversation about the customer — they
+ * answer with real internal data every time, since (in mock mode) there's
+ * no free-form language understanding to route on beyond "which agent is
+ * this". Each agent just runs its own tool(s) and formats the result. */
+const mockStaffReply = async (agentType, ctx) => {
+  const toolResults = [];
+  const run = async (name, input = {}) => {
+    const r = await runTool(name, input, ctx);
+    toolResults.push({ name, result: r });
+    return r;
+  };
+
+  if (agentType === "visa_assistant") {
+    const r = await run("summarize_visa_cases");
+    if (!r.openCases) return { text: "No open visa cases right now.", toolResults };
+    const lines = r.cases.map(c => `${c.case_number} (${c.destination_country}, ${c.status.replace(/_/g, " ")})${c.missing_documents ? ` — ${c.missing_documents} document(s) outstanding` : ""}`);
+    return { text: `${r.openCases} open visa case(s):\n${lines.join("\n")}`, toolResults };
+  }
+
+  if (agentType === "sales_assistant") {
+    const r = await run("summarize_leads_pipeline");
+    const statusLine = r.byStatus.map(s => `${s.status}: ${s.n}`).join(", ");
+    const staleLine = r.staleCount
+      ? `${r.staleCount} lead(s) have gone quiet 3+ days: ${r.stale.map(l => `#${l.id} (${l.interest_type})`).join(", ")}`
+      : "Nothing has gone quiet — pipeline is current.";
+    return { text: `Pipeline — ${statusLine}. ${staleLine}`, toolResults };
+  }
+
+  if (agentType === "operations_assistant") {
+    const r = await run("summarize_bookings_operations");
+    const departuresLine = r.upcomingDepartures.length
+      ? `${r.upcomingDepartures.length} departing in the next 14 days: ${r.upcomingDepartures.map(b => `#${b.id} (${b.travel_date_start})`).join(", ")}`
+      : "Nothing departing in the next 14 days.";
+    const stalledLine = r.stalledDrafts.length ? ` ${r.stalledDrafts.length} draft booking(s) stalled 7+ days — worth a check.` : "";
+    return { text: `${departuresLine}${stalledLine}`, toolResults };
+  }
+
+  if (agentType === "finance_assistant") {
+    const r = await run("summarize_finance");
+    const overdueLine = r.overdueCount
+      ? `${r.overdueCount} overdue invoice(s): ${r.overdueInvoices.map(i => `${i.invoice_number} (AED ${i.totalAed})`).join(", ")}`
+      : "No overdue invoices.";
+    return { text: `${overdueLine} ${r.draftInvoiceCount} invoice(s) still in draft.`, toolResults };
+  }
+
+  if (agentType === "marketing_assistant") {
+    const r = await run("summarize_marketing_campaigns");
+    const campaignLine = r.campaigns.length
+      ? r.campaigns.map(c => `${c.name} (${c.status}, sent to ${c.sent_count})`).join("; ")
+      : "No campaigns yet.";
+    const seoLine = r.latestSeoAudit ? ` Latest SEO audit found ${r.latestSeoAudit.issues_found} issue(s) on ${r.latestSeoAudit.base_url}.` : "";
+    return { text: `${campaignLine}.${seoLine}`, toolResults };
+  }
+
+  if (agentType === "executive_assistant") {
+    const r = await run("owner_daily_brief");
+    return {
+      text: `Today: ${r.newLeadsToday} new lead(s), ${r.bookingsToday} booking(s). Revenue this month: AED ${r.revenueThisMonthAed}. `
+        + `Pending: ${r.pendingLeaveRequests} leave request(s), ${r.pendingPurchaseOrders} purchase order(s) awaiting approval.`,
+      toolResults,
+    };
+  }
+
+  return { text: "Unrecognized staff assistant type.", toolResults };
+};
+
 /* ---------- anthropic provider — real Claude, tool-use loop ---------- */
 const anthropicReply = async (agentType, history, ctx) => {
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -69,6 +136,8 @@ const anthropicReply = async (agentType, history, ctx) => {
 
   const model = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
   const system = AGENTS[agentType].systemPrompt;
+  const allowedToolNames = AGENT_TOOL_NAMES[agentType] || [];
+  const tools = TOOL_DEFINITIONS.filter(t => allowedToolNames.includes(t.name));
   let messages = history.map(m => ({ role: m.role, content: m.content }));
   const toolResults = [];
 
@@ -76,7 +145,7 @@ const anthropicReply = async (agentType, history, ctx) => {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
-      body: JSON.stringify({ model, max_tokens: 500, system, messages, tools: TOOL_DEFINITIONS }),
+      body: JSON.stringify({ model, max_tokens: 500, system, messages, tools }),
     });
     if (!res.ok) throw new Error(`Anthropic API error: ${res.status} ${await res.text()}`);
     const data = await res.json();
@@ -98,5 +167,9 @@ const anthropicReply = async (agentType, history, ctx) => {
   return { text: "Let me have a specialist follow up on that.", toolResults };
 };
 
-export const getReply = (agentType, history, ctx) =>
-  AI_PROVIDER === "anthropic" ? anthropicReply(agentType, history, ctx) : mockReply(agentType, history, ctx);
+export const getReply = (agentType, history, ctx) => {
+  if (AI_PROVIDER === "anthropic") return anthropicReply(agentType, history, ctx);
+  return STAFF_AGENT_TYPES.includes(agentType) ? mockStaffReply(agentType, ctx) : mockCustomerReply(agentType, history, ctx);
+};
+
+export const isStaffAgent = (agentType) => STAFF_AGENT_TYPES.includes(agentType);
