@@ -6,6 +6,7 @@ import { SCHEMA, SEED_ROLES, SEED_PERMISSIONS } from "./schema.js";
 import { migrateMoneyToFils } from "./migrations/001-money-to-fils.js";
 import { addBookingQuotationLink } from "./migrations/002-add-booking-quotation-link.js";
 import { migrateTypedServicesAndGl } from "./migrations/003-typed-services-and-gl.js";
+import { migrateSupplierAndDocuments } from "./migrations/004-supplier-and-documents.js";
 
 const root = dirname(fileURLToPath(import.meta.url));
 export const dbPath = process.env.DB_PATH || join(root, "data", "elite-escape.db");
@@ -16,6 +17,7 @@ db.exec(SCHEMA);
 migrateMoneyToFils(db);
 addBookingQuotationLink(db);
 migrateTypedServicesAndGl(db);
+migrateSupplierAndDocuments(db);
 
 // INSERT OR IGNORE against the UNIQUE name/code columns — safe to re-run on
 // every boot, so a later phase's new role or permission reaches a database

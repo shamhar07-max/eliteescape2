@@ -160,9 +160,13 @@ router.delete("/api/booking-items/:id", auth(["ops.write"]), (req, res) => {
 });
 
 // ===== Travelers =====
+// No .default() on travelerType — this schema's .partial() is reused for
+// PATCH below, and zod's .partial() does not clear .default(): an absent
+// key would silently resolve to "adult" and overwrite an existing value.
+// The POST handler applies the "adult" default explicitly instead.
 const travelerSchema = z.object({
   fullName: z.string().min(1),
-  travelerType: z.enum(["adult", "child", "infant"]).default("adult"),
+  travelerType: z.enum(["adult", "child", "infant"]).optional(),
   dateOfBirth: z.string().optional(),
   gender: z.string().optional(),
   nationality: z.string().optional(),
@@ -181,13 +185,14 @@ router.post("/api/bookings/:id/travelers", auth(["ops.write"]), (req, res) => {
   if (!booking) return res.status(404).json({ error: "booking not found" });
 
   const t = parsed.data;
+  const travelerType = t.travelerType || "adult";
   const result = db.prepare(`
     INSERT INTO travelers (booking_id, full_name, traveler_type, date_of_birth, gender, nationality, passport_number, passport_expiry, visa_status, special_assistance, dietary_needs, emergency_contact)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(req.params.id, t.fullName, t.travelerType, t.dateOfBirth || null, t.gender || null, t.nationality || null,
+  `).run(req.params.id, t.fullName, travelerType, t.dateOfBirth || null, t.gender || null, t.nationality || null,
     t.passportNumber || null, t.passportExpiry || null, t.visaStatus || null, t.specialAssistance || null, t.dietaryNeeds || null, t.emergencyContact || null);
 
-  res.status(201).json({ id: Number(result.lastInsertRowid), bookingId: Number(req.params.id), ...t });
+  res.status(201).json({ id: Number(result.lastInsertRowid), bookingId: Number(req.params.id), ...t, travelerType });
 });
 
 router.patch("/api/travelers/:id", auth(["ops.write"]), (req, res) => {

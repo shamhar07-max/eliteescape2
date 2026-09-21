@@ -19,6 +19,7 @@ import { router as adminRoutes } from "./routes/admin.routes.js";
 import { router as quotationsRoutes } from "./routes/quotations.routes.js";
 import { router as visaRoutes } from "./routes/visa.routes.js";
 import { router as refundsRoutes } from "./routes/refunds.routes.js";
+import { router as documentsRoutes } from "./routes/documents.routes.js";
 import { metricsMiddleware } from "./lib/metrics.js";
 
 // Grant every seeded role its module permissions. Owner/admin get everything;
@@ -43,7 +44,9 @@ import { metricsMiddleware } from "./lib/metrics.js";
 
 export const app = express();
 app.use(metricsMiddleware);
-app.use(express.json());
+// 15mb covers a 10MB document upload base64-encoded (~4/3 overhead) plus
+// JSON framing — every other route's payloads are tiny by comparison.
+app.use(express.json({ limit: "15mb" }));
 app.use(cookieParser());
 
 app.get("/api/health", (req, res) => {
@@ -66,6 +69,7 @@ app.use(adminRoutes);
 app.use(quotationsRoutes);
 app.use(visaRoutes);
 app.use(refundsRoutes);
+app.use(documentsRoutes);
 
 const webRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "web");
 app.use(express.static(webRoot));

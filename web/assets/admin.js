@@ -746,6 +746,72 @@
     }
   }
 
+  // ===== Generic document management (embedded per entity) =====
+  const DOC_TYPE_LABELS = { passport: "Passport", emirates_id: "Emirates ID", visa: "Visa", contract: "Contract", other: "Other" };
+
+  function fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(",")[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function renderDocumentsSection(containerId, entityType, entityId, allowedTypes) {
+    const container = $(`#${containerId}`);
+    if (!container) return;
+    const docs = await api(`/api/documents?entityType=${entityType}&entityId=${entityId}`);
+    container.innerHTML = `
+      <h3>Documents</h3>
+      <div class="timeline">${docs.map(d => `
+        <div class="timeline-item">
+          <b>${DOC_TYPE_LABELS[d.document_type] || d.document_type}</b>: ${d.file_name} (${(d.size_bytes / 1024).toFixed(1)} KB)
+          ${d.expiry_date ? ` — expires ${d.expiry_date}` : ""}
+          <span class="status-pill status-${d.status === "active" ? "won" : d.status === "expired" ? "lost" : "new"}">${d.status}</span>
+          <div class="row" style="margin-top:4px">
+            <button class="btn-outline doc-download-btn" data-id="${d.id}" data-name="${d.file_name}">Download</button>
+            <button class="btn-outline doc-delete-btn" data-id="${d.id}">Delete</button>
+          </div>
+        </div>`).join("") || "<p class='muted'>No documents uploaded yet.</p>"}</div>
+      <form class="note-form doc-upload-form" style="flex-wrap:wrap;margin-top:8px">
+        <select name="documentType" style="flex:0.8">${allowedTypes.map(t => `<option value="${t}">${DOC_TYPE_LABELS[t]}</option>`).join("")}</select>
+        <input type="file" name="file" required style="flex:1.2">
+        <input type="date" name="expiryDate" style="flex:0.8">
+        <button type="submit">Upload</button>
+      </form>`;
+
+    $(".doc-upload-form", container).addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const file = fd.get("file");
+      if (!file || !file.size) return alert("Choose a file first.");
+      const base64 = await fileToBase64(file);
+      try {
+        await api("/api/documents", { method: "POST", body: JSON.stringify({
+          entityType, entityId, documentType: fd.get("documentType"), fileName: file.name,
+          mimeType: file.type || "application/octet-stream", fileBase64: base64, expiryDate: fd.get("expiryDate") || undefined,
+        }) });
+        renderDocumentsSection(containerId, entityType, entityId, allowedTypes);
+      } catch (err) { alert(err.message); }
+    });
+
+    $$(".doc-download-btn", container).forEach(btn => btn.addEventListener("click", async () => {
+      const res = await fetch(`/api/documents/${btn.dataset.id}/download`, { credentials: "include" });
+      if (!res.ok) return alert("Download failed.");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = btn.dataset.name; a.click();
+      URL.revokeObjectURL(url);
+    }));
+
+    $$(".doc-delete-btn", container).forEach(btn => btn.addEventListener("click", async () => {
+      await api(`/api/documents/${btn.dataset.id}`, { method: "DELETE" });
+      renderDocumentsSection(containerId, entityType, entityId, allowedTypes);
+    }));
+  }
+
   // ===== Employees =====
   let employeesCache = [], selectedEmployeeId = null;
   const employeeStatusPill = (s) => s === "active" ? "won" : s === "on_leave" ? "contacted" : "lost";
@@ -787,13 +853,16 @@
         <div class="timeline-item">
           ${l.leave_type} — ${l.start_date} to ${l.end_date}
           <span class="status-pill status-${l.status === "approved" ? "won" : l.status === "rejected" ? "lost" : "new"}">${l.status}</span>
-        </div>`).join("") || "<p class='muted'>No leave requests yet.</p>"}</div>`;
+        </div>`).join("") || "<p class='muted'>No leave requests yet.</p>"}</div>
+      <div id="employeeDocuments"></div>`;
 
     $$(".emp-status-btn", $("#employeeDetail")).forEach(btn => btn.addEventListener("click", async () => {
       await api(`/api/employees/${id}/status`, { method: "PATCH", body: JSON.stringify({ status: btn.dataset.status }) });
       await loadEmployees();
       selectEmployee(id);
     }));
+
+    renderDocumentsSection("employeeDocuments", "employee", id, ["passport", "emirates_id", "visa", "other"]);
   }
 
   $("#employeeForm").addEventListener("submit", async (e) => {
@@ -946,16 +1015,21 @@
   });
 
   // ===== Procurement =====
-  let vendorsCache = [], purchaseOrdersCache = [], selectedPoId = null;
+  let vendorsCache = [], purchaseOrdersCache = [], selectedPoId = null, selectedVendorId = null;
   const poStatusPill = (s) => s === "paid" ? "won" : s === "cancelled" ? "lost" : s === "approved" ? "quoted" : s === "received" ? "contacted" : "new";
 
   async function loadProcurement() {
     vendorsCache = await api("/api/vendors");
     $("#vendorsList").innerHTML = vendorsCache.map(v => `
-      <div class="card">
-        <div class="card-top"><span class="card-title">${v.name}</span><span class="card-sub">${v.category}</span></div>
+      <div class="card${v.id === selectedVendorId ? " selected" : ""}" data-id="${v.id}">
+        <div class="card-top">
+          <span class="card-title">${v.name}</span>
+          <span class="status-pill status-${v.status === "inactive" ? "lost" : "won"}">${v.status || "active"}</span>
+        </div>
+        <div class="card-sub">${v.category}</div>
         <div class="card-sub">${v.email || ""} ${v.phone || ""}</div>
-      </div>`).join("") || "<p class='muted'>No vendors yet.</p>";
+      </div>`).join("") || "<p class='muted'>No suppliers yet.</p>";
+    $$(".card[data-id]", $("#vendorsList")).forEach(card => card.addEventListener("click", () => selectVendor(Number(card.dataset.id))));
 
     const select = $("#poVendorSelect");
     select.innerHTML = vendorsCache.map(v => `<option value="${v.id}">${v.name}</option>`).join("");
@@ -970,6 +1044,132 @@
         <div class="card-sub">${po.vendor_name} — AED ${po.amount_aed}</div>
       </div>`).join("") || "<p class='muted'>No purchase orders yet.</p>";
     $$(".card[data-id]", $("#purchaseOrdersList")).forEach(card => card.addEventListener("click", () => selectPo(Number(card.dataset.id))));
+  }
+
+  async function selectVendor(id) {
+    selectedVendorId = id;
+    $$(".card", $("#vendorsList")).forEach(c => c.classList.toggle("selected", Number(c.dataset.id) === id));
+    const [vendor, performance] = await Promise.all([
+      api(`/api/vendors/${id}`), api(`/api/vendors/${id}/performance`),
+    ]);
+
+    $("#vendorDetail").innerHTML = `
+      <h2>${vendor.name}</h2>
+      <p class="muted">${vendor.category}${vendor.trn ? ` · TRN ${vendor.trn}` : ""}</p>
+      <div class="row">
+        <button class="btn-outline vendor-status-btn${vendor.status === "active" ? " active" : ""}" data-status="active">active</button>
+        <button class="btn-outline vendor-status-btn${vendor.status === "inactive" ? " active" : ""}" data-status="inactive">inactive</button>
+      </div>
+      <table>
+        <tr><td>Contact</td><td>${vendor.contact_name || "—"} ${vendor.email || ""} ${vendor.phone || ""}</td></tr>
+        <tr><td>Currency</td><td>${vendor.currency}</td></tr>
+        <tr><td>Payment terms</td><td>${vendor.payment_terms || "—"}</td></tr>
+        <tr><td>Contract</td><td>${vendor.contract_start || "—"} to ${vendor.contract_end || "—"}</td></tr>
+        <tr><td>Address</td><td>${vendor.address || "—"}</td></tr>
+        <tr><td>Website</td><td>${vendor.website || "—"}</td></tr>
+        <tr><td>Notes</td><td>${vendor.notes || "—"}</td></tr>
+      </table>
+      <form class="note-form" id="vendorEditForm" style="flex-wrap:wrap">
+        <input name="trn" placeholder="TRN" value="${vendor.trn || ""}" style="flex:0.8">
+        <input name="currency" placeholder="Currency" value="${vendor.currency || "AED"}" style="width:80px" maxlength="3">
+        <input name="paymentTerms" placeholder="Payment terms" value="${vendor.payment_terms || ""}" style="flex:0.9">
+        <input name="contractStart" type="date" value="${vendor.contract_start || ""}" style="flex:0.7">
+        <input name="contractEnd" type="date" value="${vendor.contract_end || ""}" style="flex:0.7">
+        <input name="address" placeholder="Address" value="${vendor.address || ""}" style="flex:1.2">
+        <input name="website" placeholder="Website" value="${vendor.website || ""}" style="flex:1">
+        <input name="notes" placeholder="Notes" value="${vendor.notes || ""}" style="flex:1.5">
+        <button type="submit">Save details</button>
+      </form>
+
+      <h3>Performance</h3>
+      <table>
+        <tr><td>Purchase orders</td><td>${performance.purchaseOrders.count} (${performance.purchaseOrders.cancelledCount} cancelled) — AED ${performance.purchaseOrders.totalSpentAed.toFixed(2)} spent</td></tr>
+        <tr><td>Services fulfilled</td><td>${performance.servicesFulfilled.count} — AED ${performance.servicesFulfilled.totalCostAed.toFixed(2)} cost</td></tr>
+        <tr><td>Refunds from supplier</td><td>${performance.refunds.count} — AED ${performance.refunds.totalRefundedAed.toFixed(2)}</td></tr>
+      </table>
+
+      <h3>Contacts</h3>
+      <div class="timeline">${vendor.contacts.map(c => `
+        <div class="timeline-item">
+          ${c.name}${c.role ? ` — ${c.role}` : ""}${c.is_primary ? " ⭐" : ""}
+          <div class="meta">${c.email || ""} ${c.phone || ""}</div>
+          <button class="btn-outline delete-contact-btn" data-id="${c.id}" style="margin-top:4px;padding:2px 8px;">Remove</button>
+        </div>`).join("") || "<p class='muted'>No contacts yet.</p>"}</div>
+      <form class="note-form" id="contactForm" style="flex-wrap:wrap">
+        <input name="name" placeholder="Contact name" required style="flex:1">
+        <input name="role" placeholder="Role" style="flex:0.8">
+        <input name="email" type="email" placeholder="Email" style="flex:1">
+        <input name="phone" placeholder="Phone" style="flex:0.8">
+        <button type="submit">Add contact</button>
+      </form>
+
+      <h3>Rate card</h3>
+      <div class="timeline">${vendor.rates.map(r => `
+        <div class="timeline-item">
+          <b>[${r.service_type}]</b> ${r.description} — ${r.currency} ${r.cost_aed}
+          ${r.valid_from ? `<div class="meta">Valid ${r.valid_from} to ${r.valid_to || "open"}</div>` : ""}
+          <button class="btn-outline delete-rate-btn" data-id="${r.id}" style="margin-top:4px;padding:2px 8px;">Remove</button>
+        </div>`).join("") || "<p class='muted'>No rates on file yet.</p>"}</div>
+      <form class="note-form" id="rateForm" style="flex-wrap:wrap">
+        <select name="serviceType" style="flex:0.7">
+          ${["holiday", "flight", "hotel", "visa", "transfer", "attraction", "insurance", "other"].map(t => `<option value="${t}">${t}</option>`).join("")}
+        </select>
+        <input name="description" placeholder="Description" required style="flex:1.2">
+        <input name="costAed" type="number" step="0.01" placeholder="Cost AED" required style="width:100px">
+        <input name="validFrom" type="date" style="flex:0.7">
+        <input name="validTo" type="date" style="flex:0.7">
+        <button type="submit">Add rate</button>
+      </form>
+
+      <div id="vendorDocuments"></div>`;
+
+    $$(".vendor-status-btn", $("#vendorDetail")).forEach(btn => btn.addEventListener("click", async () => {
+      await api(`/api/vendors/${id}/status`, { method: "PATCH", body: JSON.stringify({ status: btn.dataset.status }) });
+      await loadProcurement();
+      selectVendor(id);
+    }));
+
+    $("#vendorEditForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      await api(`/api/vendors/${id}`, { method: "PATCH", body: JSON.stringify({
+        trn: fd.get("trn") || undefined, currency: fd.get("currency") || undefined, paymentTerms: fd.get("paymentTerms") || undefined,
+        contractStart: fd.get("contractStart") || undefined, contractEnd: fd.get("contractEnd") || undefined,
+        address: fd.get("address") || undefined, website: fd.get("website") || undefined, notes: fd.get("notes") || undefined,
+      }) });
+      selectVendor(id);
+    });
+
+    $("#contactForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      await api(`/api/vendors/${id}/contacts`, { method: "POST", body: JSON.stringify({
+        name: fd.get("name"), role: fd.get("role") || undefined, email: fd.get("email") || undefined, phone: fd.get("phone") || undefined,
+      }) });
+      selectVendor(id);
+    });
+
+    $$(".delete-contact-btn", $("#vendorDetail")).forEach(btn => btn.addEventListener("click", async () => {
+      await api(`/api/supplier-contacts/${btn.dataset.id}`, { method: "DELETE" });
+      selectVendor(id);
+    }));
+
+    $("#rateForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      await api(`/api/vendors/${id}/rates`, { method: "POST", body: JSON.stringify({
+        serviceType: fd.get("serviceType"), description: fd.get("description"), costAed: Number(fd.get("costAed")),
+        validFrom: fd.get("validFrom") || undefined, validTo: fd.get("validTo") || undefined,
+      }) });
+      selectVendor(id);
+    });
+
+    $$(".delete-rate-btn", $("#vendorDetail")).forEach(btn => btn.addEventListener("click", async () => {
+      await api(`/api/supplier-rates/${btn.dataset.id}`, { method: "DELETE" });
+      selectVendor(id);
+    }));
+
+    renderDocumentsSection("vendorDocuments", "supplier", id, ["contract", "other"]);
   }
 
   async function selectPo(id) {

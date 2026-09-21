@@ -213,9 +213,16 @@
       <div class="tab-head"><h1>Procurement</h1></div>
       <form class="note-form" id="vendorForm">
         <input name="name" placeholder="Vendor name" required style="flex:1.3">
-        <select name="category" style="width:150px">
-          <option value="transport">Transport</option>
+        <select name="category" style="width:160px">
+          <option value="airline">Airline</option>
           <option value="hotel">Hotel</option>
+          <option value="dmc">DMC</option>
+          <option value="tour_operator">Tour operator</option>
+          <option value="visa_partner">Visa partner</option>
+          <option value="transfer_company">Transfer company</option>
+          <option value="attraction_supplier">Attraction supplier</option>
+          <option value="insurance_company">Insurance company</option>
+          <option value="transport">Transport (internal)</option>
           <option value="office_supplies">Office supplies</option>
           <option value="marketing">Marketing</option>
           <option value="other">Other</option>
@@ -233,8 +240,11 @@
         <div class="list" id="purchaseOrdersList"></div>
         <div class="detail" id="purchaseOrderDetail"><p class="muted">Select a purchase order to view details.</p></div>
       </div>
-      <div class="tab-head" style="margin-top:28px"><h2 style="margin:0;font-size:16px">Vendors</h2></div>
-      <div class="list wide" id="vendorsList"></div>
+      <div class="tab-head" style="margin-top:28px"><h2 style="margin:0;font-size:16px">Suppliers</h2></div>
+      <div class="split" style="margin-top:12px">
+        <div class="list" id="vendorsList"></div>
+        <div class="detail" id="vendorDetail"><p class="muted">Select a supplier to view details.</p></div>
+      </div>
     </section>
 
     <section id="tab-campaigns" class="tab" hidden>

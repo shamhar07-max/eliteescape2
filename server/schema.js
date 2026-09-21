@@ -339,13 +339,41 @@ CREATE TABLE IF NOT EXISTS payslips (
 );
 
 -- ===== Procurement (Phase 5) =====
+-- vendors gains supplier-management columns (trn, currency, payment_terms,
+-- contract dates, status, address, website, notes) via migrations/004 — it
+-- already exists on live DBs, same CREATE TABLE IF NOT EXISTS limitation
+-- noted throughout this file.
 CREATE TABLE IF NOT EXISTS vendors (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   contact_name TEXT,
   email TEXT,
   phone TEXT,
-  category TEXT,                             -- 'transport', 'hotel', 'office_supplies', 'marketing', 'other'
+  category TEXT,                             -- 'airline', 'hotel', 'dmc', 'tour_operator', 'visa_partner', 'transfer_company', 'attraction_supplier', 'insurance_company', 'office_supplies', 'marketing', 'other'
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS supplier_contacts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  vendor_id INTEGER NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  role TEXT,
+  email TEXT,
+  phone TEXT,
+  is_primary INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS supplier_rates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  vendor_id INTEGER NOT NULL REFERENCES vendors(id) ON DELETE CASCADE,
+  service_type TEXT NOT NULL,   -- same vocabulary as booking_items.service_type
+  description TEXT NOT NULL,
+  cost_aed_fils INTEGER NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'AED',
+  valid_from TEXT,
+  valid_to TEXT,
+  notes TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -515,6 +543,28 @@ CREATE TABLE IF NOT EXISTS refunds (
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- ===== Document management (Phase 12) =====
+-- Polymorphic entity_type/entity_id — same pattern as audit_log above — so
+-- one table covers passports/Emirates IDs on customers, employees and
+-- travelers, contracts on suppliers, and real files behind the visa
+-- checklist, without a document_management table per entity type.
+CREATE TABLE IF NOT EXISTS documents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity_type TEXT NOT NULL,     -- 'customer', 'employee', 'supplier', 'traveler', 'booking', 'visa_document', 'other'
+  entity_id INTEGER NOT NULL,
+  document_type TEXT NOT NULL,   -- 'passport', 'emirates_id', 'visa', 'contract', 'other'
+  file_name TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  storage_path TEXT NOT NULL,    -- relative path under server/data/documents — never served directly
+  expiry_date TEXT,
+  status TEXT NOT NULL DEFAULT 'active', -- 'active', 'expired', 'archived'
+  notes TEXT,
+  uploaded_by_user_id INTEGER REFERENCES users(id),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_leads_status ON leads(status);
 CREATE INDEX IF NOT EXISTS idx_leads_owner ON leads(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_lead_activities_lead ON lead_activities(lead_id);
@@ -559,6 +609,11 @@ CREATE INDEX IF NOT EXISTS idx_journal_lines_entry ON journal_lines(journal_entr
 CREATE INDEX IF NOT EXISTS idx_journal_lines_account ON journal_lines(account_id);
 CREATE INDEX IF NOT EXISTS idx_refunds_booking ON refunds(booking_id);
 CREATE INDEX IF NOT EXISTS idx_refunds_status ON refunds(status);
+CREATE INDEX IF NOT EXISTS idx_supplier_contacts_vendor ON supplier_contacts(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_supplier_rates_vendor ON supplier_rates(vendor_id);
+CREATE INDEX IF NOT EXISTS idx_documents_entity ON documents(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_documents_expiry ON documents(expiry_date);
+CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
 `;
 
 export const SEED_ROLES = [

@@ -133,3 +133,34 @@ before deploying — it defaults to local dev ports only.
       detail fields. Verified end-to-end via curl (full lifecycle: typed
       booking → invoice → payment → PO → payroll → refund → all four GL
       reports, confirmed balanced) and Playwright (both new UI surfaces).
+- [x] **Phase 12 — Supplier management + document management**: `vendors`
+      gains TRN, currency, payment terms, contract dates, address/website
+      and an active/inactive status, plus travel-specific categories
+      (airline/hotel/DMC/tour operator/visa partner/transfer company/
+      attraction supplier/insurance company) alongside the original
+      procurement ones. New `supplier_contacts` (multiple contacts per
+      supplier) and `supplier_rates` (a real rate card: service type,
+      cost, validity window) tables, plus a computed performance endpoint
+      (spend and PO count, services actually fulfilled from
+      `booking_items.supplier_id`, refunds received) — no separate
+      tracking table, it's all derived from data these modules already
+      write. A generic `documents` module (`server/lib/documents.js`,
+      `server/routes/documents.routes.js`) gives every entity type
+      (customer, employee, supplier, traveler, booking, visa document)
+      real file storage on local disk under `server/data/documents/`
+      (never served statically — only reachable through the authenticated
+      download route), with expiry-date tracking for passports/Emirates
+      IDs/visas and an `/api/documents/expiring` endpoint. New
+      **Documents** widget embedded in the Employees and Suppliers
+      (Procurement) tabs; the Suppliers list gained a full detail view
+      (contacts, rate card, performance, contract documents, editable
+      details). Along the way, fixed a real bug in this phase's own first
+      draft: zod's `.partial()` does not clear a field's `.default()`, so
+      a PATCH that omitted `category`/`currency` (vendors) or
+      `travelerType` (travelers) was silently resetting them — caught by
+      testing a partial update and comparing before/after, fixed by
+      moving the defaults out of the shared schema and into the POST
+      handlers only. Verified end-to-end via curl (supplier CRUD,
+      contacts, rates, performance, document upload/download/delete,
+      expiring-documents query) and Playwright (Suppliers and Employees
+      document UI, including a real file upload through the browser).
