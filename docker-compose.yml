@@ -1,0 +1,18 @@
+services:
+  app:
+    build: .
+    ports:
+      - "4100:4100"
+    volumes:
+      - app-data:/app/server/data
+    environment:
+      PORT: "4100"
+      # Set for encrypted backups (see docs/BACKUP_AND_DR.md) — unset means
+      # local backups are stored in plaintext, fine for local dev only.
+      # BACKUP_ENCRYPTION_KEY: ""
+      # PUBLIC_WEBSITE_ORIGINS: "https://eliteescapetourism.com"
+      # AI_PROVIDER: "mock"
+    restart: unless-stopped
+
+volumes:
+  app-data:

@@ -1550,8 +1550,51 @@
   let usersCache = [], selectedUserId = null;
 
   async function loadAdminTab() {
-    await Promise.all([loadMetrics(), loadUsers(), loadAuditLog()]);
+    await Promise.all([loadMetrics(), loadUsers(), loadAuditLog(), loadBackups()]);
   }
+
+  async function loadBackups() {
+    const backups = await api("/api/admin/backups");
+    $("#backupsList").innerHTML = backups.map(b => `
+      <div class="card">
+        <div class="card-top">
+          <span class="card-title">${b.fileName}</span>
+          <span class="status-pill status-${b.encrypted ? "won" : "new"}">${b.encrypted ? "encrypted" : "plaintext"}</span>
+        </div>
+        <div class="card-sub">${new Date(b.createdAt).toLocaleString()} · ${(b.sizeBytes / 1024).toFixed(0)} KB${b.label ? ` · ${b.label}` : ""}</div>
+        <div class="card-sub" style="font-family:monospace;font-size:11px">${b.checksumSha256.slice(0, 16)}…</div>
+      </div>`).join("") || "<p class='muted'>No backups yet — click \"Run backup now\".</p>";
+  }
+
+  $("#runBackupBtn").addEventListener("click", async () => {
+    const btn = $("#runBackupBtn");
+    btn.disabled = true; btn.textContent = "Backing up…";
+    try {
+      await api("/api/admin/backups", { method: "POST" });
+      await loadBackups();
+    } catch (err) { alert(err.message); }
+    finally { btn.disabled = false; btn.textContent = "Run backup now"; }
+  });
+
+  $("#runRestoreTestBtn").addEventListener("click", async () => {
+    const btn = $("#runRestoreTestBtn");
+    btn.disabled = true; btn.textContent = "Running restore test…";
+    $("#restoreTestResult").innerHTML = "<p class='muted'>Backing up, restoring into an isolated temp directory, and verifying integrity + row counts…</p>";
+    try {
+      const result = await api("/api/admin/backups/restore-test", { method: "POST" });
+      $("#restoreTestResult").innerHTML = `
+        <div class="detail" style="margin-top:8px">
+          <h2 style="color:${result.pass ? "var(--success)" : "var(--danger)"}">${result.pass ? "✓ RESTORE TEST PASSED" : "✗ RESTORE TEST FAILED"}</h2>
+          <p class="muted">${result.backupFile} — ${new Date(result.ranAt).toLocaleString()}</p>
+          <table class="wide-table"><tr><th></th><th>Check</th><th>Detail</th></tr>
+          ${result.steps.map(s => `<tr><td>${s.ok ? "✓" : "✗"}</td><td>${s.name}</td><td>${s.detail}</td></tr>`).join("")}
+          </table>
+        </div>`;
+      await loadBackups();
+    } catch (err) {
+      $("#restoreTestResult").innerHTML = `<p style="color:var(--danger)">${err.message}</p>`;
+    } finally { btn.disabled = false; btn.textContent = "Run restore test"; }
+  });
 
   async function loadMetrics() {
     const m = await api("/api/admin/metrics");

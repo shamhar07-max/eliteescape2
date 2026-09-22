@@ -42,6 +42,36 @@ endpoint: `POST /api/public/leads`. See `server/routes/public.routes.js`.
 Set `PUBLIC_WEBSITE_ORIGINS` (comma-separated) to the real website domain(s)
 before deploying — it defaults to local dev ports only.
 
+## Testing
+
+```bash
+cd server
+npm test                        # smoke suite — real HTTP against a throwaway DB
+node scripts/restore-test.js    # backup + restore disaster-recovery drill
+```
+
+Both also run in CI (`.github/workflows/ci.yml`) on every push to `main`.
+
+## Docker
+
+```bash
+docker compose up --build
+```
+
+Builds from `Dockerfile` (`node:22-slim` — `node:sqlite` needs Node 22+) and
+persists the DB, uploaded documents, and local backups in one named volume
+mounted at `server/data` inside the container. See `docker-compose.yml` for
+the environment variables worth setting in production
+(`BACKUP_ENCRYPTION_KEY`, `PUBLIC_WEBSITE_ORIGINS`, `AI_PROVIDER`).
+
+## Backups & disaster recovery
+
+See `docs/BACKUP_AND_DR.md` for the full procedure. Short version: automated
+DB + document backups (WAL-safe, optionally encrypted, retained), a restore
+test that actually runs (not just exists) both locally and in CI, and a
+step-by-step recovery procedure — plus an honest list of what's scaffolded
+but not implemented (off-host storage, scheduling) and why.
+
 ## Roadmap / phases
 
 - [x] **Phase 1 — Foundation**: auth, RBAC, CRM data spine, audit log
@@ -189,3 +219,36 @@ before deploying — it defaults to local dev ports only.
       against real seeded data, permission-scoped search results) and
       Playwright (Reports/BI sub-tabs, search dropdown, and navigating
       from a search hit straight into the matching supplier and invoice).
+- [x] **Phase 14 — Backups/disaster recovery + CI/CD**: `server/lib/backup.js`
+      backs up the SQLite DB via `node:sqlite`'s own WAL-safe `backup()`
+      API (never a raw file copy) alongside the local document store,
+      tarred together with a SHA-256 manifest, optionally AES-256-GCM
+      encrypted (`BACKUP_ENCRYPTION_KEY`), with fixed-count retention.
+      Per the spec's own "not 'complete' until restore tests actually
+      pass": `runRestoreTest()` backs up, restores into an isolated temp
+      dir, runs `PRAGMA integrity_check`, and compares row/file counts
+      against live data — genuinely run (not just written) against this
+      repo's real dev database both in plaintext and encrypted form, and
+      wired into a **Backups & disaster recovery** panel in Platform
+      Admin with a live pass/fail readout. Full procedure documented in
+      `docs/BACKUP_AND_DR.md`, including what's intentionally scaffolded
+      but not implemented (off-host/cloud storage — no cloud credentials
+      exist in this environment to integrate against honestly; scheduling
+      — GitHub Actions has no network path to a self-hosted production
+      DB, so `scripts/backup.js` is meant for the host's own cron/systemd
+      timer, not CI).
+      Also adds a real (if minimal — a full test suite is its own
+      separate, larger piece of work) smoke-test suite
+      (`server/test/smoke.test.js`, `node --test`) exercising the actual
+      Express app over real HTTP against a throwaway SQLite DB: bootstrap
+      registration and its self-registration lock, login, the full
+      Inquiry → Lead → Booking → Invoice → Payment pipeline, a GL-balance
+      check, and RBAC (401 vs. 403). A `Dockerfile` + `docker-compose.yml`
+      package the app (`node:22-slim`, since `node:sqlite` needs Node 22+),
+      and `.github/workflows/ci.yml` runs the smoke suite, the restore
+      drill, and a Docker build + boot + health-check on every push —
+      **honesty note**: this sandbox's network policy blocks Docker Hub
+      pulls (confirmed via the proxy status endpoint), so the Docker build
+      itself could only be verified by careful manual review here, not
+      executed; it will get its first real run in GitHub Actions, which
+      does have registry access.

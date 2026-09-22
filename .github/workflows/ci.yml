@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  test:
+    name: Test + restore drill
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install dependencies
+        working-directory: server
+        run: npm install
+
+      - name: Smoke test suite
+        working-directory: server
+        run: npm test
+
+      # The backup/restore-test cycle runs against whatever dev DB exists
+      # at this point in the job (created fresh by the smoke tests above,
+      # or an empty one if that step is ever skipped) — so a restore that
+      # silently breaks fails CI on every single push, not just when
+      # someone remembers to run it by hand. See master spec §66 and
+      # docs/BACKUP_AND_DR.md.
+      - name: Backup + restore disaster-recovery drill
+        working-directory: server
+        run: node scripts/restore-test.js
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: docker build -t eliteescape2:ci .
+
+      - name: Boot the built image and check /api/health
+        run: |
+          docker run -d --name ee-ci -p 4100:4100 eliteescape2:ci
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:4100/api/health; then echo; exit 0; fi
+            sleep 1
+          done
+          echo "app never became healthy" >&2
+          docker logs ee-ci
+          exit 1
